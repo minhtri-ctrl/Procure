@@ -1,5 +1,6 @@
 node_modules/
 server/public/
+server/webui/
 admin/spa.html
 .env
 *.log

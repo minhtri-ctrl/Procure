@@ -48,16 +48,17 @@ app.use('/api/requests', requestsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/users', usersRoutes);
 
-// Phục vụ admin build (SPA) nếu đã build.
-// Entry là spa.html (KHÔNG dùng tên index.html để nền tảng deploy không nhầm
-// đây là site tĩnh mà bỏ qua server Node). index:false để fallback tự kiểm soát.
-const adminDist = path.join(__dirname, '..', 'public');
-const spaFile = path.join(adminDist, 'spa.html');
+// Phục vụ admin build (SPA) từ server/webui.
+// File entry được lưu dưới dạng spa.tpl (KHÔNG phải .html) để deploy runner của
+// nền tảng không phân loại project là STATIC_HTML mà chạy đúng server Node.
+const adminDist = path.join(__dirname, '..', 'webui');
+const spaFile = path.join(adminDist, 'spa.tpl');
 if (fs.existsSync(spaFile)) {
+  const spaHtml = fs.readFileSync(spaFile);
   app.use(express.static(adminDist, { index: false }));
-  app.get(/^(?!\/api).*/, (req, res) => res.sendFile(spaFile));
+  app.get(/^(?!\/api).*/, (req, res) => res.type('html').send(spaHtml));
 } else {
-  app.get('/', (req, res) => res.json({ service: 'ProcureOS API', note: 'Admin UI chưa được build vào /public' }));
+  app.get('/', (req, res) => res.json({ service: 'ProcureOS API', note: 'Admin UI chưa được build vào server/webui' }));
 }
 
 // Error handler

@@ -2,14 +2,13 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 
-// Build ra thẳng server/public để Express phục vụ tĩnh.
-// Dùng spa.html làm entry (KHÔNG đặt tên index.html ở repo để nền tảng deploy
-// nhận diện đây là app Node, không phải STATIC_HTML). Sau build sẽ đổi tên
-// spa.html -> index.html (xem script postinstall ở root package.json).
+// Build ra server/webui (KHÔNG dùng tên "public"/"dist" và KHÔNG để lại file .html
+// trong workspace, để deploy runner của nền tảng không phân loại nhầm là STATIC_HTML).
+// Entry là spa.html; sau build sẽ đổi thành spa.tpl (xem postinstall ở root).
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: '../server/public',
+    outDir: '../server/webui',
     emptyOutDir: true,
     rollupOptions: {
       input: fileURLToPath(new URL('./spa.html', import.meta.url)),
