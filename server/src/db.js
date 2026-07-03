@@ -41,11 +41,17 @@ async function waitForDb(retries = 30, delayMs = 2000) {
 }
 
 function splitStatements(sqlText) {
-  // Tách theo dấu ; ở cuối dòng — đủ dùng cho schema/seed đơn giản (không có stored proc).
-  return sqlText
+  // Bỏ các dòng comment "-- ..." TRƯỚC khi tách, nếu không cả cụm (comment + lệnh)
+  // sẽ bắt đầu bằng "--" và bị loại nhầm, khiến CREATE TABLE không chạy.
+  const noComments = sqlText
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*--/.test(line))
+    .join('\n');
+  // Tách theo dấu ; ở cuối dòng — đủ dùng cho schema/seed (không có stored proc).
+  return noComments
     .split(/;\s*(?:\r?\n|$)/)
     .map((s) => s.trim())
-    .filter((s) => s.length && !/^--/.test(s));
+    .filter((s) => s.length);
 }
 
 async function runSqlFile(file, { ignoreErrors = false } = {}) {
