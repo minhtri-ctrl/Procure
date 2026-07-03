@@ -66,9 +66,17 @@ Tạo tự động lần đầu khi bảng `users` trống:
 
 ## Deploy (demo.ffol4.vn / Demo System)
 
-1. Tạo project + managed MySQL trên Demo System.
-2. Đặt biến môi trường `DATABASE_URL` (hoặc DB_*), `JWT_SECRET`.
-3. Deploy bằng Dockerfile — schema/seed chạy tự động khi khởi động.
+🔗 **Bản chạy thật:** https://procureos.demo.ffol4.vn — đăng nhập `admin@garena.vn` / `admin123` (đổi ngay sau khi dùng).
+
+Quy trình:
+1. Tạo project + managed MySQL trên Demo System (DATABASE_URL được inject tự động).
+2. `import_repo` từ GitHub → `deploy`. Schema + seed + admin chạy tự động lúc khởi động.
+
+Lưu ý quan trọng về nền tảng Demo System (buildpack, KHÔNG dùng Dockerfile):
+- Nền tảng tự nhận diện loại project. Nếu workspace (sau khi build) còn **bất kỳ file `.html`** nào (ngoài `node_modules`) → nó phân loại **STATIC_HTML** và chỉ chạy `npx serve`, bỏ qua server Node. Vì vậy admin build ra `server/webui/` và file entry được đổi đuôi thành `spa.tpl` (Express đọc và trả về HTML).
+- Cần `package.json` + `package-lock.json` ở **thư mục gốc** để nhận diện Node.
+- Container chạy `NODE_ENV=production` → phải cài devDependencies của admin bằng `--include=dev` (vite).
+- App phải nghe cổng **8080** (đã đặt mặc định).
 
 ## API chính
 
