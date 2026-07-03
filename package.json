@@ -2,13 +2,21 @@
   "name": "procureos-web",
   "version": "1.0.0",
   "private": true,
-  "description": "ProcureOS Web — monorepo (server Express + admin React)",
+  "description": "ProcureOS Web — Express API + React admin (MySQL)",
+  "main": "server/src/index.js",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "postinstall": "npm --prefix server install && npm --prefix admin install",
-    "build": "npm --prefix admin run build",
+    "postinstall": "npm --prefix admin install && npm --prefix admin run build",
     "start": "node server/src/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.0"
   }
 }
