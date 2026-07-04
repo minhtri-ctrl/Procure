@@ -104,6 +104,26 @@ Lưu ý quan trọng về nền tảng Demo System (buildpack, KHÔNG dùng Dock
 
 Chưa port (giai đoạn sau): gửi email SMTP thật, tạo Google Docs/Drive thật, in phiếu kho PDF.
 
+## Quy trình (workflow) & phân quyền
+
+Luồng đơn hàng (cấu hình được trong **Admin → Cấu hình Workflow**):
+
+`Mới → Đang xử lý → Đã báo giá → Requester xác nhận → Đã đặt hàng NCC → Đã nhận hàng → Đã nhập kho (nếu cần) → Đủ chứng từ → Đã thanh toán → Hoàn tất` (kèm Từ chối / Đã huỷ).
+
+Mỗi lần chuyển trạng thái đều ghi **lịch sử** (ai, khi nào, ghi chú). Kiểm soát theo vai trò:
+- **admin / purchasing (buyer):** chuyển mọi trạng thái, nhập giá/NCC/BG theo dòng, tạo/sửa/xoá đơn, cấu hình.
+- **requester:** chỉ *Xác nhận / Từ chối* đơn của chính mình.
+- **warehouse:** chỉ *Đã nhận hàng / Đã nhập kho*.
+
+## Chuẩn mã
+
+- **Mã đơn (MA_DH):** `RQ-{TEAM}-{YY}-{NNNN}` — vd `RQ-MKT-26-0001` (đếm theo team + năm).
+- **Mã hàng (MA_HANG):** `{TEAM}-{ABBR2}-{YYMM}-{NNNN}` — vd `MKT-IN-2607-0001` (ABBR2 = viết tắt loại hàng, đếm theo team+loại+tháng).
+
+## Tuỳ biến giao diện
+
+**Admin → Giao diện**: đổi màu chính/sidebar/nền/accent (có mẫu sẵn), xem trước tức thì, lưu áp dụng cho mọi người. Lưu trong `settings.ui_theme`, nạp lúc khởi động và gán vào CSS variables.
+
 ### Bật LLM thật cho Trợ lý AI
 
 Đặt biến môi trường khi deploy (mặc định dùng intent router, không cần key):
