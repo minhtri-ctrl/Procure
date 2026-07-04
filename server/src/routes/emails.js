@@ -29,9 +29,10 @@ async function getSetting(key, dflt) {
 // Sinh mã NCC 3 ký tự (bỏ dấu, bỏ từ chung, lấy 2 từ cuối).
 function nccCode(name) {
   const STOP = new Set(['CONG', 'TY', 'TNHH', 'CP', 'CTY', 'CORP', 'GROUP', 'TM', 'DV', 'CO', 'LTD', 'JSC', 'VN', 'VIETNAM', 'VIET', 'NAM']);
-  const clean = String(name || '')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd')
-    .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter((w) => w && !STOP.has(w));
+  const clean = String(name || '').normalize('NFD')
+    .split('').filter(function(c){var x=c.charCodeAt(0);return x<768||x>879;})
+    .map(function(c){var x=c.charCodeAt(0);return (x===272||x===273)?'D':c;}).join('')
+    .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/s+/).filter((w) => w && !STOP.has(w));
   if (!clean.length) return 'NCC';
   if (clean.length === 1) return (clean[0] + 'XX').slice(0, 3);
   const w1 = clean[clean.length - 2];

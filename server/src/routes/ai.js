@@ -126,7 +126,7 @@ async function chatOpenAI(message, history) {
 }
 
 // ---- Fallback không cần API key: định tuyến ý định + format tiếng Việt ----
-function norm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+function norm(s) { return String(s || '').normalize('NFD').split('').filter(function(c){var x=c.charCodeAt(0);return x<768||x>879;}).map(function(c){var x=c.charCodeAt(0);return (x===272||x===273)?'d':c;}).join('').toLowerCase(); }
 
 async function chatLocal(message) {
   const t = norm(message);
