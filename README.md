@@ -99,5 +99,13 @@ Lưu ý quan trọng về nền tảng Demo System (buildpack, KHÔNG dùng Dock
 - **Kho hàng** — phiếu nhập (PNK) / xuất (PXK) đánh số `PNK/PXK-YYMM-NNNN` (mốc ngày 25), kiểm tra đủ tồn khi xuất, sổ Xuất–Nhập–Tồn với TON lũy kế, dựng lại tồn kho (HANG_TON). Bám `warehouse_addon.js`.
 - **Email** — 4 loại (Xác nhận NCC, Bàn giao, Khảo sát, Thông báo nhập kho) với tiêu đề/nội dung tiếng Việt, sinh số PO `PO-{NCC}-{YYYY}-{seq}`, ghi **LỊCH SỬ GỬI ĐƠN**, thu thập & tính điểm **đánh giá** trung bình. Bám `MainMerged.js`. *(Nền tảng demo không có SMTP nên "gửi" = ghi nhận lịch sử + soạn sẵn nội dung.)*
 - **Hợp đồng** — tự chọn **DDH/HĐ** theo hợp đồng khung của NCC, sinh **văn bản hợp đồng HTML** (thay Google Docs) kèm bảng hàng, tổng tiền và **đọc số thành chữ**, auto-create cho đơn ≥ 20 triệu. Bám `procureCreateContractFromTemplate` + `ProcureOS_Automation.js`.
+- **Trợ lý AI** — chat với **7 công cụ (function calling)** đọc dữ liệu thật: thống kê, tìm/chi tiết đơn, NCC, tồn kho, báo cáo, schema. Hỗ trợ **Claude** (mặc định) và **OpenAI** qua biến môi trường `AI_API_KEY`/`AI_PROVIDER`/`AI_MODEL`; **không có key vẫn chạy** nhờ bộ định tuyến ý định (intent router). Bám `procureAskAI`.
+- **Ảnh sản phẩm** — upload ảnh (lưu bền trong DB bảng `attachments`), phục vụ qua `/api/uploads/:id`, hiển thị thumbnail. Bám `procureUploadImageByRow`/`procureClearImageByRow`.
 
-Chưa port (giai đoạn sau): trợ lý AI, upload ảnh sản phẩm, gửi email SMTP thật, in phiếu kho PDF.
+Chưa port (giai đoạn sau): gửi email SMTP thật, tạo Google Docs/Drive thật, in phiếu kho PDF.
+
+### Bật LLM thật cho Trợ lý AI
+
+Đặt biến môi trường khi deploy (mặc định dùng intent router, không cần key):
+- `AI_PROVIDER=anthropic` · `AI_API_KEY=sk-ant-...` · `AI_MODEL=claude-sonnet-5` (khuyến nghị)
+- hoặc `AI_PROVIDER=openai` · `AI_API_KEY=sk-...` · `AI_MODEL=gpt-4o-mini`
