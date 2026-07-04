@@ -3,13 +3,16 @@ import { api } from '../api.js';
 import Modal from '../components/Modal.jsx';
 
 // Trang CRUD dùng chung cho các danh mục đơn giản.
-export default function CrudPage({ title, endpoint, columns, fields, canWrite = true }) {
+export default function CrudPage({ title, endpoint, columns, fields, canWrite = true, importEndpoint }) {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState(null); // object | null
   const [form, setForm] = useState({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [importBusy, setImportBusy] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [importErr, setImportErr] = useState('');
 
   const load = useCallback(() => {
     api.get(`${endpoint}?q=${encodeURIComponent(q)}&limit=200`).then((r) => setRows(r.data || r)).catch((e) => setErr(e.message));
@@ -32,6 +35,21 @@ export default function CrudPage({ title, endpoint, columns, fields, canWrite = 
     await api.del(`${endpoint}/${row.id}`); load();
   };
 
+  const onImportFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setImportErr(''); setImportResult(null);
+    const rd = new FileReader();
+    rd.onload = async () => {
+      const b64 = String(rd.result).split(',')[1];
+      setImportBusy(true);
+      try { setImportResult(await api.post(importEndpoint, { fileBase64: b64 })); load(); }
+      catch (e2) { setImportErr(e2.message); } finally { setImportBusy(false); }
+    };
+    rd.readAsDataURL(f);
+    e.target.value = '';
+  };
+
   return (
     <>
       <div className="topbar"><h1>{title}</h1></div>
@@ -39,8 +57,21 @@ export default function CrudPage({ title, endpoint, columns, fields, canWrite = 
         <div className="toolbar">
           <input className="search" placeholder="Tìm kiếm…" value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="spacer" />
+          {canWrite && importEndpoint && (
+            <label className="btn-sm" style={{ cursor: 'pointer' }}>
+              {importBusy ? 'Đang nhập…' : '📥 Nhập Excel'}
+              <input type="file" accept=".xlsx,.xls" onChange={onImportFile} disabled={importBusy} style={{ display: 'none' }} />
+            </label>
+          )}
           {canWrite && <button className="btn-primary" onClick={openNew}>+ Thêm mới</button>}
         </div>
+        {importErr && <div className="error">{importErr}</div>}
+        {importResult && (
+          <div style={{ color: 'var(--green)', marginBottom: 10 }}>
+            ✅ Đã nhập: {importResult.created} mới, {importResult.updated} cập nhật (tổng {importResult.total}).
+            {importResult.errors?.length > 0 && <> Lỗi: {importResult.errors.join('; ')}</>}
+          </div>
+        )}
         {err && <div className="error">{err}</div>}
         <div className="table-wrap">
           <table>

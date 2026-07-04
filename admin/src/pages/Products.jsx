@@ -3,6 +3,7 @@ import { api, fmtVND } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import Modal from '../components/Modal.jsx';
 import SupplierSelect from '../components/SupplierSelect.jsx';
+import ImageLightbox from '../components/ImageLightbox.jsx';
 
 export default function Products() {
   const { user } = useAuth();
@@ -16,6 +17,7 @@ export default function Products() {
   const [imgData, setImgData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [lightbox, setLightbox] = useState(null); // { src, alt } | null
 
   const load = () => api.get(`/products?q=${encodeURIComponent(q)}&category_id=${cat}&limit=100`).then((r) => setRows(r.data)).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, [q, cat]);
@@ -69,7 +71,13 @@ export default function Products() {
             <tbody>
               {rows.map((p) => (
                 <tr key={p.id}>
-                  <td>{p.image_url ? <img src={p.image_url} alt="" style={{ height: 34, width: 34, objectFit: 'cover', borderRadius: 6 }} /> : <span className="muted">—</span>}</td>
+                  <td>{p.image_url ? (
+                    <img
+                      src={p.image_url} alt=""
+                      style={{ height: 34, width: 34, objectFit: 'cover', borderRadius: 6, cursor: 'zoom-in' }}
+                      onClick={() => setLightbox({ src: p.image_url, alt: p.name })}
+                    />
+                  ) : <span className="muted">—</span>}</td>
                   <td><strong>{p.sku}</strong></td>
                   <td>{p.name}</td>
                   <td>{p.category_name || '-'}</td>
@@ -114,7 +122,11 @@ export default function Products() {
           <div className="field">
             <label>Ảnh sản phẩm</label>
             {(imgData || form.image_url) && (
-              <img src={imgData || form.image_url} alt="" style={{ maxHeight: 100, borderRadius: 8, display: 'block', marginBottom: 6 }} />
+              <img
+                src={imgData || form.image_url} alt=""
+                style={{ maxHeight: 100, borderRadius: 8, display: 'block', marginBottom: 6, cursor: 'zoom-in' }}
+                onClick={() => setLightbox({ src: imgData || form.image_url, alt: form.name || '' })}
+              />
             )}
             <input type="file" accept="image/*" onChange={onPickFile} />
             {(imgData || form.image_url) && <button type="button" className="btn-sm btn-danger" style={{ marginTop: 6 }} onClick={removeImg}>Xoá ảnh</button>}
@@ -122,6 +134,7 @@ export default function Products() {
           {err && <div className="error">{err}</div>}
         </Modal>
       )}
+      {lightbox && <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />}
     </>
   );
 }

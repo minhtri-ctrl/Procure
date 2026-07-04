@@ -4,6 +4,7 @@ import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap } from '../util.js';
 import { moneyVnd } from '../lib/vn.js';
 import { notifySeaTalk } from '../lib/seatalk.js';
+import { sendMail } from '../lib/mailer.js';
 
 const router = Router();
 router.use(authRequired);
@@ -119,13 +120,33 @@ router.post('/preview', wrap(async (req, res) => {
   res.json({ type, label: def.label, to, cc, po_no: poNo, subject, body });
 }));
 
-// Gửi (ghi nhận vào LỊCH SỬ GỬI ĐƠN) — nền tảng demo không có SMTP nên ghi lịch sử.
+// Gửi email. Nếu đã cấu hình SMTP (Cấu hình công ty > SMTP, admin) thì gửi thật qua nodemailer;
+// chưa cấu hình -> chỉ ghi vào LỊCH SỬ GỬI ĐƠN như trước (không lỗi, rõ trạng thái "mô phỏng" để phân biệt).
 router.post('/send', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
   const { order_id, type } = req.body || {};
   const cc = req.body.cc || (await getSetting('email_cc_list', DEFAULTS.cc_list));
   const { order, def, to, poNo, subject, body } = await buildEmail(order_id, type);
+  if (!to) return res.status(400).json({ error: 'Không có email người nhận (NCC/Requester chưa có email)' });
 
-  // Cập nhật đơn theo loại email (bám code gốc).
+  let sent = false;
+  let sendError = null;
+  try {
+    ({ sent } = await sendMail({ to, cc, subject, html: body }));
+  } catch (e) {
+    sendError = e.message;
+  }
+
+  if (sendError) {
+    await query(
+      `INSERT INTO email_logs (sent_at, order_code, recipient_name, recipient_email, project_name, email_type, status, note, cc_list, body_html, po_no)
+       VALUES (NOW(),?,?,?,?,?,?,?,?,?,?)`,
+      [order.order_code, def.to === 'supplier' ? order.supplier_name : order.requester_name, to, order.project_name,
+        def.logType, 'LỖI GỬI', `SMTP lỗi: ${sendError}`, cc, body, poNo]
+    );
+    return res.status(502).json({ error: 'Gửi email thất bại: ' + sendError });
+  }
+
+  // Cập nhật đơn theo loại email (bám code gốc) — chỉ khi email đã thực sự gửi (thật hoặc ghi log mô phỏng).
   if (type === 'confirm' && poNo) {
     await query('UPDATE orders SET po_no = ?, po_date = NOW(), po_status = ? WHERE id = ?', [poNo, 'Đã gửi NCC', order.id]);
   } else if (type === 'handover') {
@@ -138,11 +159,11 @@ router.post('/send', requireRole('admin', 'purchasing'), wrap(async (req, res) =
     `INSERT INTO email_logs (sent_at, order_code, recipient_name, recipient_email, project_name, email_type, status, note, cc_list, body_html, po_no)
      VALUES (NOW(),?,?,?,?,?,?,?,?,?,?)`,
     [order.order_code, def.to === 'supplier' ? order.supplier_name : order.requester_name, to, order.project_name,
-      def.logType, 'ĐÃ GỬI', subject, cc, body, poNo]
+      def.logType, sent ? 'ĐÃ GỬI' : 'ĐÃ GỬI (mô phỏng - chưa cấu hình SMTP)', subject, cc, body, poNo]
   );
   // Thông báo SeaTalk song song (bật bằng webhook trong cấu hình).
   notifySeaTalk(`[ProcureOS] ${def.label}: đơn ${order.order_code} - ${order.project_name || ''} → ${to}`);
-  res.status(201).json({ ok: true, to, cc, subject, po_no: poNo });
+  res.status(201).json({ ok: true, sent, to, cc, subject, po_no: poNo });
 }));
 
 // Lịch sử gửi đơn.

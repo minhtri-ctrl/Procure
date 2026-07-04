@@ -120,6 +120,7 @@ export default function App() {
         <Route path="/ai" element={<AIAssistant />} />
         <Route path="/suppliers" element={<CrudPage
           title="Nhà cung cấp" endpoint="/suppliers" canWrite={canWrite}
+          importEndpoint="/suppliers/import"
           columns={[
             { key: 'name', label: 'Tên NCC' },
             { key: 'vendor_no', label: 'Mã NCC' },
@@ -137,6 +138,14 @@ export default function App() {
             { key: 'address', label: 'Địa chỉ' },
             { key: 'payment_term_days', label: 'Công nợ (ngày)', type: 'number' },
             { key: 'representative', label: 'Người đại diện ký' },
+            { key: 'rep_title', label: 'Chức vụ người đại diện' },
+            { key: 'master_contract', label: 'Số hợp đồng khung' },
+            { key: 'bank_name', label: 'Ngân hàng' },
+            { key: 'bank_account', label: 'Số tài khoản' },
+            { key: 'bank_branch', label: 'Chi nhánh NH' },
+            { key: 'delivery_person', label: 'Người giao hàng' },
+            { key: 'delivery_phone', label: 'SĐT người giao hàng' },
+            { key: 'delivery_email', label: 'Email người giao hàng' },
           ]}
         />} />
         <Route path="/teams" element={<CrudPage

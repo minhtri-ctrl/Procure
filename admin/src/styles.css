@@ -90,6 +90,12 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; c
 .modal h2 { margin: 0 0 18px; font-size: 18px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 
+/* Image lightbox */
+.lightbox { background: #fff; border-radius: 12px; padding: 20px; max-width: 90vw; max-height: 90vh; display: flex; flex-direction: column; align-items: center; gap: 14px; position: relative; }
+.lightbox-img { max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; }
+.lightbox-actions { display: flex; gap: 10px; }
+.lightbox-msg { position: absolute; bottom: -10px; transform: translateY(100%); background: #1f2733; color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 13px; }
+
 /* Login */
 .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #16202e, #263547); }
 .login-card { background: #fff; border-radius: 14px; padding: 36px; width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }

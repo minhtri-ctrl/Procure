@@ -21,6 +21,7 @@ import workflowRoutes from './routes/workflow.js';
 import settingsRoutes from './routes/settings.js';
 import importRoutes from './routes/import.js';
 import notificationsRoutes from './routes/notifications.js';
+import suppliersImportRoutes from './routes/suppliersImport.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -44,9 +45,12 @@ app.use('/api/categories', crudRouter({
   fields: ['code', 'name', 'abbr', 'abbr2', 'is_active'],
   searchCols: ['code', 'name'],
 }));
+app.use('/api/suppliers/import', suppliersImportRoutes);
 app.use('/api/suppliers', crudRouter({
   table: 'suppliers',
-  fields: ['name', 'vendor_no', 'master_contract', 'tax_code', 'address', 'contact_name', 'contact_phone', 'contact_email', 'payment_term_days', 'representative', 'is_active'],
+  fields: ['name', 'vendor_no', 'master_contract', 'tax_code', 'address', 'contact_name', 'contact_phone', 'contact_email',
+    'payment_term_days', 'representative', 'rep_title', 'bank_name', 'bank_account', 'bank_branch',
+    'delivery_person', 'delivery_phone', 'delivery_email', 'is_active'],
   searchCols: ['name', 'vendor_no', 'contact_name'],
 }));
 app.use('/api/signatories', crudRouter({
