@@ -9,6 +9,7 @@ import OrderDetail from './pages/OrderDetail.jsx';
 import CreateOrder from './pages/CreateOrder.jsx';
 import WorkflowConfig from './pages/WorkflowConfig.jsx';
 import Appearance from './pages/Appearance.jsx';
+import CompanySettings from './pages/CompanySettings.jsx';
 import ImportData from './pages/ImportData.jsx';
 import Requests from './pages/Requests.jsx';
 import Products from './pages/Products.jsx';
@@ -44,6 +45,7 @@ const NAV = [
   { to: '/admin/import', label: '⬆️ Nhập dữ liệu', roles: ['admin'] },
   { to: '/admin/workflow', label: '🔀 Cấu hình Workflow', roles: ['admin'] },
   { to: '/admin/appearance', label: '🎨 Giao diện', roles: ['admin'] },
+  { to: '/admin/company', label: '🏢 Công ty & Người ký', roles: ['admin'] },
 ];
 
 function Layout({ children }) {
@@ -165,6 +167,7 @@ export default function App() {
         <Route path="/admin/import" element={user.role === 'admin' ? <ImportData /> : <Navigate to="/" />} />
         <Route path="/admin/workflow" element={user.role === 'admin' ? <WorkflowConfig /> : <Navigate to="/" />} />
         <Route path="/admin/appearance" element={user.role === 'admin' ? <Appearance /> : <Navigate to="/" />} />
+        <Route path="/admin/company" element={user.role === 'admin' ? <CompanySettings /> : <Navigate to="/" />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>

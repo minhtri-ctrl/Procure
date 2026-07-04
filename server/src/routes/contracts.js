@@ -17,21 +17,27 @@ const INVALID_MASTER_CONTRACT = ['', 'Chọn Normal sourcing', 'Normal sourcing'
 const MIN_VALUE_AUTO_DOC = 20000000;
 const AUTO_DOC_STATUSES = ['waiting', 'in_progress', 'quoted', 'ordered', 'received'];
 
-const COMPANY = {
-  name: 'Công Ty Cổ Phần Giải Trí và Thể Thao Điện Tử Việt Nam',
-  address: 'Tầng 6, Tòa nhà Capital Place, 29 Liễu Giai, Phường Ngọc Hà, Hà Nội, Việt Nam',
-};
+// Thông tin công ty (Bên A) — cấu hình qua trang Cấu hình công ty (settings.company_info), không hard-code.
+async function getCompanyInfo() {
+  const rows = await query('SELECT value FROM settings WHERE `key` = ?', ['company_info']);
+  try { return rows.length && rows[0].value ? JSON.parse(rows[0].value) : {}; } catch { return {}; }
+}
+
+// Người ký mặc định theo vai trò + phạm vi (team) — cấu hình qua trang "Người ký / Signatories".
+// scope ưu tiên = mã team; nếu không có riêng thì dùng scope 'default'.
+async function getSignatory(roleKey, scope) {
+  if (scope) {
+    const rows = await query('SELECT * FROM signatories WHERE role_key=? AND scope=? AND is_active=1 LIMIT 1', [roleKey, scope]);
+    if (rows.length) return rows[0];
+  }
+  const rows = await query('SELECT * FROM signatories WHERE role_key=? AND scope=? AND is_active=1 LIMIT 1', [roleKey, 'default']);
+  return rows[0] || null;
+}
 
 // DDH nếu NCC có MASTER_CONTRACT hợp lệ, ngược lại HĐ dịch vụ.
 function decideType(masterContract) {
   const v = String(masterContract || '').trim();
   return v && !INVALID_MASTER_CONTRACT.includes(v) ? 'DDH' : 'HD';
-}
-
-// Người đại diện ký của công ty theo team (bám code gốc).
-function ourSigner(teamCode) {
-  return ['AOV', 'FCO', 'PPT'].includes(String(teamCode || '').toUpperCase())
-    ? 'Nguyễn Đắc Bá Nhật' : 'Vũ Chí Công';
 }
 
 // Phân tích hình thức thanh toán -> % tạm ứng / còn lại.
@@ -63,7 +69,7 @@ async function nextContractNo(type) {
 }
 
 // Dựng văn bản hợp đồng HTML (thay cho Google Docs template).
-function buildDocument({ type, contractNo, order, supplier, items, subtotal, vat, total, payment, ourSignerName }) {
+function buildDocument({ type, contractNo, order, supplier, items, subtotal, vat, total, payment, ourSignerName, ourSignerTitle, company }) {
   const today = new Date().toLocaleDateString('vi-VN');
   const rows = items.map((it, i) => `<tr>
     <td class="c">${i + 1}</td><td>${it.item_name || ''}</td><td class="c">${it.unit || ''}</td>
@@ -87,7 +93,7 @@ function buildDocument({ type, contractNo, order, supplier, items, subtotal, vat
   <p class="sub">Số: <b>${contractNo}</b> &nbsp;·&nbsp; Ngày ${today}</p>
   <p>Căn cứ nhu cầu và khả năng của hai Bên, hôm nay chúng tôi gồm:</p>
   <table class="parties"><tr>
-    <td><b>BÊN MUA (Bên A):</b><br>${COMPANY.name}<br><span class="muted">${COMPANY.address}</span><br>Đại diện: <b>${ourSignerName}</b></td>
+    <td><b>BÊN MUA (Bên A):</b><br>${company?.name || ''}<br><span class="muted">${company?.address || ''}</span><br>Đại diện: <b>${ourSignerName}</b>${ourSignerTitle ? ` - ${ourSignerTitle}` : ''}</td>
     <td><b>BÊN BÁN (Bên B):</b><br>${supplier?.name || ''}<br><span class="muted">${supplier?.address || ''}</span><br>
       MST: ${supplier?.tax_code || ''}<br>Đại diện: <b>${supplier?.representative || supplier?.contact_name || ''}</b></td>
   </tr></table>
@@ -131,9 +137,12 @@ async function createFromOrder(orderId, forcedType) {
 
   const type = forcedType || decideType(supplier?.master_contract);
   const payment = parsePayment(order.payment_method, total);
-  const ourSignerName = ourSigner(order.team_code);
+  const company = await getCompanyInfo();
+  const signer = await getSignatory('contract', order.team_code);
+  const ourSignerName = signer?.name || 'Đại diện Công ty';
+  const ourSignerTitle = signer?.title || 'Giám đốc';
   const contractNo = await nextContractNo(type);
-  const documentHtml = buildDocument({ type, contractNo, order, supplier, items, subtotal, vat, total, payment, ourSignerName });
+  const documentHtml = buildDocument({ type, contractNo, order, supplier, items, subtotal, vat, total, payment, ourSignerName, ourSignerTitle, company });
 
   const r = await query(
     `INSERT INTO contracts (order_id, supplier_id, contract_no, type, amount, subtotal, vat_amount, payment_method, our_signer, vendor_signer, document_html, status)
@@ -186,11 +195,12 @@ async function buildDocxData(contract) {
   const items = await query('SELECT * FROM order_items WHERE order_id = ? ORDER BY id', [contract.order_id]);
   const amount = Number(contract.amount || 0);
   const p = parsePayment(order?.payment_method, amount);
+  const signer = await getSignatory('contract', order?.team_code);
   return {
     VENDOR_NO: order?.po_no || contract.contract_no || order?.order_code || '',
     TODAY: new Date().toLocaleDateString('vi-VN'),
     MASTER_CONTRACT_NO: sup?.master_contract || order?.contract_no || '',
-    DAI_DIEN_CTY_KY: contract.our_signer || '', CHUC_VU_DAI_DIEN_CTY: 'Giám đốc',
+    DAI_DIEN_CTY_KY: contract.our_signer || signer?.name || '', CHUC_VU_DAI_DIEN_CTY: signer?.title || 'Giám đốc',
     NCC: sup?.name || '', DIA_CHI: sup?.address || '', MA_SO_THUE: sup?.tax_code || '',
     NGUOI_DAI_DIEN: sup?.representative || sup?.contact_name || '', CHUC_VU_DAI_DIEN_NCC: sup?.rep_title || '',
     SO_TAI_KHOAN: sup?.bank_account || '', NGAN_HANG: sup?.bank_name || '', CHI_NHANH_NGAN_HANG: sup?.bank_branch || '',

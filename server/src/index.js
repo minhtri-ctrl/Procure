@@ -49,6 +49,12 @@ app.use('/api/suppliers', crudRouter({
   fields: ['name', 'vendor_no', 'master_contract', 'tax_code', 'address', 'contact_name', 'contact_phone', 'contact_email', 'payment_term_days', 'representative', 'is_active'],
   searchCols: ['name', 'vendor_no', 'contact_name'],
 }));
+app.use('/api/signatories', crudRouter({
+  table: 'signatories',
+  fields: ['role_key', 'scope', 'name', 'title', 'phone', 'email', 'is_active'],
+  searchCols: ['name', 'role_key', 'scope'],
+  writeRoles: ['admin'],
+}));
 
 // Modules
 app.use('/api/products', productsRoutes);

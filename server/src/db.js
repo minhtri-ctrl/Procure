@@ -201,6 +201,40 @@ async function ensureTheme() {
     ['ui_theme', JSON.stringify(DEFAULT_THEME), 'Cấu hình màu giao diện']);
 }
 
+// Thông tin công ty (bên A) dùng để điền hợp đồng/ĐĐH — admin sửa qua trang Cấu hình công ty.
+const DEFAULT_COMPANY_INFO = {
+  name: 'Công Ty Cổ Phần Giải Trí và Thể Thao Điện Tử Việt Nam',
+  address: 'Tầng 6, Tòa nhà Capital Place, 29 Liễu Giai, Phường Ngọc Hà, Hà Nội, Việt Nam',
+  tax_code: '', phone: '', email: '',
+};
+
+async function ensureCompanyInfo() {
+  const rows = await query('SELECT value FROM settings WHERE `key` = ?', ['company_info']);
+  if (rows.length) return;
+  await query('INSERT INTO settings (`key`, value, description) VALUES (?,?,?)',
+    ['company_info', JSON.stringify(DEFAULT_COMPANY_INFO), 'Thông tin công ty (Bên A) điền hợp đồng']);
+}
+
+// Người ký mặc định (bám dữ liệu code gốc) — seed 1 lần, sau đó admin tự sửa qua UI.
+const DEFAULT_SIGNATORIES = [
+  ['contract', 'default', 'Vũ Chí Công', 'Giám đốc'],
+  ['contract', 'AOV', 'Nguyễn Đắc Bá Nhật', 'Giám đốc'],
+  ['contract', 'FCO', 'Nguyễn Đắc Bá Nhật', 'Giám đốc'],
+  ['contract', 'PPT', 'Nguyễn Đắc Bá Nhật', 'Giám đốc'],
+  ['thu_kho', 'default', 'Lê Minh Trí', 'Thủ kho'],
+  ['ke_toan', 'default', 'Nguyễn Thị Thúy An', 'Kế toán'],
+  ['truong_phong', 'default', 'Võ Thị Tuyền Chinh', 'Trưởng phòng'],
+];
+
+async function ensureSignatories() {
+  const [{ c }] = await query('SELECT COUNT(*) AS c FROM signatories');
+  if (c > 0) return;
+  for (const [role_key, scope, name, title] of DEFAULT_SIGNATORIES) {
+    await query('INSERT INTO signatories (role_key, scope, name, title) VALUES (?,?,?,?)', [role_key, scope, name, title]);
+  }
+  console.log('[db] Đã tạo danh sách người ký mặc định.');
+}
+
 export async function initDb() {
   await waitForDb();
   await runSqlFile('schema.sql');
@@ -214,5 +248,7 @@ export async function initDb() {
   await ensureAdmin();
   await ensureWorkflow();
   await ensureTheme();
+  await ensureCompanyInfo();
+  await ensureSignatories();
   console.log('[db] Khởi tạo database hoàn tất.');
 }

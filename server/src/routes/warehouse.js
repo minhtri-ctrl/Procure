@@ -4,6 +4,116 @@ import { query, pool } from '../db.js';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap } from '../util.js';
 
+async function getCompanyInfo() {
+  const rows = await query('SELECT value FROM settings WHERE `key` = ?', ['company_info']);
+  try { return rows.length && rows[0].value ? JSON.parse(rows[0].value) : {}; } catch { return {}; }
+}
+
+async function getSignatory(roleKey, scope) {
+  if (scope) {
+    const rows = await query('SELECT * FROM signatories WHERE role_key=? AND scope=? AND is_active=1 LIMIT 1', [roleKey, scope]);
+    if (rows.length) return rows[0];
+  }
+  const rows = await query('SELECT * FROM signatories WHERE role_key=? AND scope=? AND is_active=1 LIMIT 1', [roleKey, 'default']);
+  return rows[0] || null;
+}
+
+function fmtVnDate(d) {
+  const dt = d ? new Date(d) : new Date();
+  return `Ngày ${dt.getDate()} tháng ${dt.getMonth() + 1} năm ${dt.getFullYear()}`;
+}
+function fmtDDMMYYYY(d) {
+  const dt = d ? new Date(d) : new Date();
+  return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+}
+const firstNonEmpty = (rows, key) => { for (const r of rows) { if (r[key]) return r[key]; } return ''; };
+
+// Dựng HTML Phiếu Nhập/Xuất Kho đúng mẫu S12-DN (Thông tư 200/2014/TT-BTC).
+async function buildVoucherHtml(voucherNo) {
+  const lines = await query('SELECT * FROM inventory_moves WHERE voucher_no = ? ORDER BY id', [voucherNo]);
+  if (!lines.length) return null;
+  const type = lines[0].move_type;
+  const isNhap = type === 'PNK';
+  const company = await getCompanyInfo();
+  const thuKho = await getSignatory('thu_kho', 'default');
+  const second = await getSignatory(isNhap ? 'truong_phong' : 'ke_toan', 'default');
+  const reason = firstNonEmpty(lines, 'note');
+  const handler = firstNonEmpty(lines, 'handler_name');
+  const qdnb = firstNonEmpty(lines, 'qdnb_tbkm');
+  const ticket = firstNonEmpty(lines, 'ticket_xk');
+  const warehouse = firstNonEmpty(lines, 'warehouse');
+  const total = lines.reduce((s, l) => s + Number(isNhap ? l.qty_in : l.qty_out || 0), 0);
+
+  const rows = lines.map((l, i) => `<tr>
+    <td class="c">${i + 1}</td>
+    <td>${l.item_name || ''}</td>
+    <td class="c">${l.sku || ''}</td>
+    <td class="c">${l.so_pr || ''}</td>
+    <td class="c">${l.unit || ''}</td>
+    <td class="c">${fmtDDMMYYYY(l.move_date)}</td>
+    <td class="r">${Number(l.qty_in || 0) || ''}</td>
+    <td class="r">${Number(l.qty_out || 0) || ''}</td>
+    <td class="r">${Number(l.running_balance || 0)}</td>
+  </tr>`).join('');
+
+  const meta = isNhap
+    ? `<div>- Họ và tên người yêu cầu: <b>${handler}</b></div>
+       <div>- Kho nhập: <b>${warehouse}</b></div>
+       <div>- Lý do nhập kho: ${reason}</div>
+       <div>- Số ticket TBKM / QĐNB: ${qdnb}</div>`
+    : `<div>- Họ và tên người nhận hàng: <b>${handler}</b></div>
+       <div>- Kho xuất: <b>${warehouse}</b></div>
+       <div>- Lý do xuất kho: ${reason}</div>
+       <div>- Số QĐNB / TBKM: ${qdnb}</div>
+       <div>- Số ticket xuất kho: ${ticket}</div>`;
+
+  const secondLabel = isNhap ? 'Trưởng phòng' : 'Kế toán';
+
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${voucherNo}</title>
+  <style>
+    body{font-family:'Times New Roman',serif;color:#111;max-width:900px;margin:20px auto;padding:0 20px;font-size:13px;line-height:1.45}
+    .hd{display:flex;justify-content:space-between;font-size:12.5px}
+    .hd .r{text-align:right}
+    h1{text-align:center;font-size:20px;margin:14px 0 2px;letter-spacing:1px}
+    .sub{text-align:center;margin:0 0 12px}
+    .meta{margin:10px 0 14px}
+    table{border-collapse:collapse;width:100%;font-size:12.5px;margin:8px 0}
+    th,td{border:1px solid #333;padding:5px 6px}
+    .c{text-align:center}.r{text-align:right}
+    th{background:#eee;text-align:center;font-weight:600}
+    .sign{margin-top:34px;width:100%}
+    .sign td{border:none;text-align:center;vertical-align:top;width:50%;padding:4px}
+    .muted{color:#555}
+    @media print{ .noprint{display:none} body{margin:0 auto} }
+  </style></head><body>
+  <div class="noprint" style="text-align:right;margin-bottom:10px"><button onclick="window.print()">🖨 In / Xuất PDF</button></div>
+  <div class="hd">
+    <div>Đơn vị: ${company?.name || ''}<br>Địa chỉ: ${company?.address || ''}</div>
+    <div class="r">Mẫu số S12-DN<br>Ban hành theo Thông tư số 200/2014/TT-BTC<br>ngày 22/12/2014 của Bộ Tài chính</div>
+  </div>
+  <h1>${isNhap ? 'PHIẾU NHẬP KHO' : 'PHIẾU XUẤT KHO'}</h1>
+  <p class="sub">${fmtVnDate(lines[0].move_date)}<br><b>${voucherNo}</b></p>
+  <div class="meta">${meta}</div>
+  <table>
+    <thead><tr>
+      <th rowspan="2">STT</th>
+      <th rowspan="2">Tên, nhãn hiệu, quy cách, phẩm chất<br>vật tư, dụng cụ, sản phẩm, hàng hóa</th>
+      <th rowspan="2">Mã hàng hóa</th><th rowspan="2">PR / PO</th>
+      <th rowspan="2">Đơn vị<br>tính</th><th rowspan="2">Ngày<br>nhập/xuất</th>
+      <th colspan="3">Số lượng</th>
+    </tr><tr><th>Nhập</th><th>Xuất</th><th>Tồn</th></tr></thead>
+    <tbody>${rows}
+      <tr><td colspan="6" class="c"><b>Cộng</b></td>
+        <td class="r"><b>${isNhap ? total : ''}</b></td><td class="r"><b>${isNhap ? '' : total}</b></td><td></td></tr>
+    </tbody>
+  </table>
+  <table class="sign"><tr>
+    <td><b>Thủ kho</b><br><span class="muted">(Ký, họ tên)</span><br><br><br>${thuKho?.name || ''}</td>
+    <td><b>${secondLabel}</b><br><span class="muted">(Ký, họ tên)</span><br><br><br>${second?.name || ''}</td>
+  </tr></table>
+  </body></html>`;
+}
+
 const router = Router();
 router.use(authRequired);
 
@@ -113,6 +223,49 @@ router.get('/vouchers', wrap(async (req, res) => {
      FROM inventory_moves ${where}
      GROUP BY voucher_no, move_type ORDER BY created_at DESC LIMIT 200`, params);
   res.json({ data: rows });
+}));
+
+// ---- In Phiếu Nhập/Xuất Kho (đúng mẫu S12-DN) ----
+router.get('/vouchers/:voucherNo/print', wrap(async (req, res) => {
+  const html = await buildVoucherHtml(req.params.voucherNo);
+  if (!html) return res.status(404).send('Không tìm thấy phiếu');
+  res.type('html').send(html);
+}));
+
+// ---- Xoá phiếu (xoá toàn bộ dòng của 1 số chứng từ + dựng lại tồn) ----
+router.delete('/vouchers/:voucherNo', requireRole(...WH_ROLES), wrap(async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [r] = await conn.query('DELETE FROM inventory_moves WHERE voucher_no = ?', [req.params.voucherNo]);
+    if (!r.affectedRows) { await conn.rollback(); return res.status(404).json({ error: 'Không tìm thấy phiếu' }); }
+    await rebuildStock(conn);
+    await conn.commit();
+    res.json({ ok: true, deleted: r.affectedRows });
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}));
+
+// ---- Xoá TOÀN BỘ dữ liệu kho (dọn dữ liệu test) — chỉ admin ----
+router.delete('/all', requireRole('admin'), wrap(async (req, res) => {
+  if (!req.body || req.body.confirm !== true) return res.status(400).json({ error: 'Cần xác nhận confirm:true' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [m] = await conn.query('DELETE FROM inventory_moves');
+    await conn.query('DELETE FROM warehouse_stock');
+    await conn.commit();
+    res.json({ ok: true, deleted_moves: m.affectedRows });
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
 }));
 
 // ---- Danh sách SKU cho form nhập/xuất ----

@@ -449,6 +449,24 @@ CREATE TABLE IF NOT EXISTS notifications (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
+-- 18. SIGNATORIES  (người ký mặc định theo vai trò — điền tự động vào hợp đồng .docx & phiếu kho)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS signatories (
+  id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  role_key   VARCHAR(30) NOT NULL,   -- 'contract' (ký HĐ/ĐĐH bên công ty) | 'thu_kho' | 'ke_toan' | 'truong_phong'
+  scope      VARCHAR(50) NOT NULL DEFAULT 'default', -- mã team (vd AOV) áp dụng riêng, hoặc 'default'
+  name       VARCHAR(190) NOT NULL,
+  title      VARCHAR(190) NULL,      -- Giám đốc / Tổng giám đốc / Thủ kho / Kế toán trưởng...
+  phone      VARCHAR(64) NULL,
+  email      VARCHAR(190) NULL,
+  is_active  TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_signatory_role_scope (role_key, scope)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
 -- Foreign keys "mềm" (thêm sau khi bảng đã tồn tại; bỏ qua nếu dữ liệu chưa khớp)
 -- ---------------------------------------------------------------------
 ALTER TABLE users        ADD CONSTRAINT fk_users_team     FOREIGN KEY (team_id)     REFERENCES teams(id)      ON DELETE SET NULL;
