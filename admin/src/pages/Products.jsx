@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { api, fmtVND } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import Modal from '../components/Modal.jsx';
+import SupplierSelect from '../components/SupplierSelect.jsx';
 
 export default function Products() {
   const { user } = useAuth();
   const canWrite = ['admin', 'purchasing'].includes(user.role);
   const [rows, setRows] = useState([]);
   const [cats, setCats] = useState([]);
-  const [sups, setSups] = useState([]);
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [editing, setEditing] = useState(null);
@@ -21,7 +21,6 @@ export default function Products() {
   useEffect(() => { load(); }, [q, cat]);
   useEffect(() => {
     api.get('/categories?limit=200').then((r) => setCats(r.data));
-    api.get('/suppliers?limit=200').then((r) => setSups(r.data));
   }, []);
 
   const openNew = () => { setForm({ vat_rate: 0.08 }); setImgData(null); setEditing({}); };
@@ -105,9 +104,7 @@ export default function Products() {
               </select>
             </div>
             <div className="field"><label>Nhà cung cấp</label>
-              <select value={form.supplier_id ?? ''} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
-                <option value="">--</option>{sups.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              <SupplierSelect value={form.supplier_id ?? ''} onChange={(v) => setForm({ ...form, supplier_id: v })} />
             </div>
           </div>
           <div className="row">

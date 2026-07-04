@@ -4,6 +4,7 @@ import { api, fmtVND } from '../api.js';
 import { useMeta } from '../meta.jsx';
 import { useAuth } from '../auth.jsx';
 import { LOAI_HH, DIEM_NHAN, HANG_MUC } from '../constants.js';
+import SupplierSelect from '../components/SupplierSelect.jsx';
 
 const emptyLine = () => ({
   loai_hh: 'Vật phẩm', item_name: '', description: '', quantity: 1, unit_price: 0, vatPct: 8,
@@ -15,7 +16,6 @@ export default function CreateOrder() {
   const { user } = useAuth();
   const { states } = useMeta();
   const [teams, setTeams] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
   const [diemCustom, setDiemCustom] = useState(false);
   const [header, setHeader] = useState({
     status: 'new', receiving_point: '', request_date: '', expected_date: '',
@@ -28,15 +28,11 @@ export default function CreateOrder() {
 
   useEffect(() => {
     api.get('/teams?limit=200').then((r) => setTeams(r.data));
-    api.get('/suppliers?limit=500').then((r) => setSuppliers(r.data));
   }, []);
 
   const setH = (k, v) => setHeader({ ...header, [k]: v });
   const setLine = (i, patch) => setLines(lines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
-  const pickNcc = (i, sid) => {
-    const s = suppliers.find((x) => String(x.id) === String(sid));
-    setLine(i, { supplier_id: sid, master_contract: s?.master_contract || '' });
-  };
+  const pickNcc = (i, sid, s) => setLine(i, { supplier_id: sid, master_contract: s?.master_contract || '' });
   const addLine = () => setLines([...lines, emptyLine()]);
   const rmLine = (i) => setLines(lines.filter((_, idx) => idx !== i));
 
@@ -148,10 +144,7 @@ export default function CreateOrder() {
                       <td><input style={{ width: 100 }} placeholder="Link" value={l.design_link} onChange={(e) => setLine(i, { design_link: e.target.value })} /></td>
                       <td><input style={{ width: 100 }} value={l.note} onChange={(e) => setLine(i, { note: e.target.value })} /></td>
                       <td><input style={{ width: 80 }} value={l.so_pr} onChange={(e) => setLine(i, { so_pr: e.target.value })} /></td>
-                      <td><select style={{ minWidth: 120 }} value={l.supplier_id} onChange={(e) => pickNcc(i, e.target.value)}>
-                        <option value="">-- NCC --</option>
-                        {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select></td>
+                      <td><SupplierSelect minWidth={150} value={l.supplier_id} onChange={(v, s) => pickNcc(i, v, s)} /></td>
                       <td><input style={{ width: 90 }} value={l.master_contract} onChange={(e) => setLine(i, { master_contract: e.target.value })} /></td>
                       <td><button className="btn-sm btn-danger" onClick={() => rmLine(i)}>×</button></td>
                     </tr>

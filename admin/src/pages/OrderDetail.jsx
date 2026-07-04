@@ -6,6 +6,7 @@ import { useMeta } from '../meta.jsx';
 import { LOAI_HH } from '../constants.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Modal from '../components/Modal.jsx';
+import SupplierSelect from '../components/SupplierSelect.jsx';
 
 export default function OrderDetail() {
   const { id } = useParams();
@@ -13,7 +14,6 @@ export default function OrderDetail() {
   const { user } = useAuth();
   const { states } = useMeta();
   const [o, setO] = useState(null);
-  const [suppliers, setSuppliers] = useState([]);
   const [teams, setTeams] = useState([]);
   const [editHdr, setEditHdr] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -24,7 +24,7 @@ export default function OrderDetail() {
   const canWrite = ['admin', 'purchasing'].includes(user.role);
 
   const load = () => api.get(`/orders/${id}`).then((d) => { setO(d); setNewStatus(d.status); }).catch((e) => setErr(e.message));
-  useEffect(() => { load(); api.get('/suppliers?limit=500').then((r) => setSuppliers(r.data)); api.get('/teams?limit=200').then((r) => setTeams(r.data)); }, [id]);
+  useEffect(() => { load(); api.get('/teams?limit=200').then((r) => setTeams(r.data)); }, [id]);
 
   const changeStatus = async () => {
     setErr(''); setMsg('');
@@ -146,14 +146,14 @@ export default function OrderDetail() {
         </div>
       </div>
 
-      {editing && <LineEdit item={editing} suppliers={suppliers} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
-      {editHdr && <EditOrder order={o} teams={teams} suppliers={suppliers} onClose={() => setEditHdr(false)} onSaved={() => { setEditHdr(false); load(); }} />}
+      {editing && <LineEdit item={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+      {editHdr && <EditOrder order={o} teams={teams} onClose={() => setEditHdr(false)} onSaved={() => { setEditHdr(false); load(); }} />}
     </>
   );
 }
 
 // Sửa thông tin đơn (header) + trường tùy chỉnh (thêm/bớt tự do).
-function EditOrder({ order, teams, suppliers, onClose, onSaved }) {
+function EditOrder({ order, teams, onClose, onSaved }) {
   const [f, setF] = useState({
     project_name: order.project_name || '', receiving_point: order.receiving_point || '', hang_muc: order.hang_muc || '',
     qdnb_tbkm: order.qdnb_tbkm || '', pm: order.pm || '', team_id: order.team_id || '', supplier_id: order.supplier_id || '',
@@ -223,7 +223,7 @@ function Info({ label, value }) {
 }
 
 // Buyer sửa dòng: giá, SL, VAT, NCC, master, số PR, thiết kế, upload báo giá.
-function LineEdit({ item, suppliers, onClose, onSaved }) {
+function LineEdit({ item, onClose, onSaved }) {
   const [f, setF] = useState({
     loai_hh: item.loai_hh || 'Vật phẩm', item_name: item.item_name || '', description: item.description || '',
     quantity: item.quantity || 0, unit_price: item.unit_price || 0, vatPct: Math.round((Number(item.vat_rate) || 0) * 100),
@@ -234,7 +234,7 @@ function LineEdit({ item, suppliers, onClose, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  const pickNcc = (sid) => { const s = suppliers.find((x) => String(x.id) === String(sid)); setF({ ...f, supplier_id: sid, master_contract: s?.master_contract || f.master_contract }); };
+  const pickNcc = (sid, s) => setF({ ...f, supplier_id: sid, master_contract: s?.master_contract || f.master_contract });
   const onFile = (e) => { const file = e.target.files?.[0]; if (!file) return; const rd = new FileReader(); rd.onload = () => setBg(rd.result); rd.readAsDataURL(file); };
 
   const save = async () => {
@@ -264,9 +264,7 @@ function LineEdit({ item, suppliers, onClose, onSaved }) {
       </div>
       <div className="row">
         <div className="field"><label>Nhà cung cấp</label>
-          <select value={f.supplier_id} onChange={(e) => pickNcc(e.target.value)}>
-            <option value="">-- NCC --</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <SupplierSelect value={f.supplier_id} onChange={(v, s) => pickNcc(v, s)} />
         </div>
         <div className="field"><label>Master Contract</label><input value={f.master_contract} onChange={(e) => setF({ ...f, master_contract: e.target.value })} /></div>
       </div>

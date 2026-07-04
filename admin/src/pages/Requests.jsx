@@ -4,6 +4,7 @@ import { useAuth } from '../auth.jsx';
 import Modal from '../components/Modal.jsx';
 import BulkDeleteButton from '../components/BulkDeleteButton.jsx';
 import { LOAI_HH, DIEM_NHAN, HANG_MUC } from '../constants.js';
+import SupplierSelect from '../components/SupplierSelect.jsx';
 
 const STATUS = { new: 'Mới', confirmed: 'Đã duyệt', rejected: 'Từ chối', completed: 'Hoàn tất' };
 
@@ -113,7 +114,6 @@ export default function Requests() {
 function RequestForm({ onClose, onSaved }) {
   const { user } = useAuth();
   const [teams, setTeams] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
   const [diemCustom, setDiemCustom] = useState(false);
   const [form, setForm] = useState({
     project_name: '', team_id: '', pm: '', requester_name: user.name, requester_email: user.email,
@@ -125,7 +125,6 @@ function RequestForm({ onClose, onSaved }) {
 
   useEffect(() => {
     api.get('/teams?limit=200').then((r) => setTeams(r.data));
-    api.get('/suppliers?limit=500').then((r) => setSuppliers(r.data));
   }, []);
 
   const setF = (k, v) => setForm({ ...form, [k]: v });
@@ -191,9 +190,7 @@ function RequestForm({ onClose, onSaved }) {
                 <td><input type="number" style={{ width: 55 }} value={it.quantity} onChange={(e) => setItem(i, 'quantity', e.target.value)} /></td>
                 <td><input style={{ width: 55 }} value={it.unit} onChange={(e) => setItem(i, 'unit', e.target.value)} /></td>
                 <td><input type="number" style={{ width: 100 }} value={it.budget} onChange={(e) => setItem(i, 'budget', e.target.value)} /></td>
-                <td><select style={{ minWidth: 110 }} value={it.suggested_supplier} onChange={(e) => setItem(i, 'suggested_supplier', e.target.value)}>
-                  <option value="">--</option>{suppliers.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
-                </select></td>
+                <td><SupplierSelect minWidth={150} valueKey="name" value={it.suggested_supplier} onChange={(v) => setItem(i, 'suggested_supplier', v)} /></td>
                 <td><button type="button" className="btn-sm btn-danger" onClick={() => rmItem(i)}>×</button></td>
               </tr>
             ))}
