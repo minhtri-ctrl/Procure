@@ -45,10 +45,12 @@ async function rebuildStock(exec) {
   for (const r of moves) {
     const key = `${r.warehouse || ''}|${r.sku || ''}`;
     let it = agg.get(key);
-    if (!it) { it = { sku: r.sku, warehouse: r.warehouse, qin: 0, qout: 0, last: {} }; agg.set(key, it); }
+    if (!it) { it = { sku: r.sku, warehouse: r.warehouse, qin: 0, qout: 0, last: {}, item_name: '', unit: '' }; agg.set(key, it); }
     it.qin += num(r.qty_in);
     it.qout += num(r.qty_out);
-    it.last = r; // dòng cuối (id lớn nhất do ORDER BY id)
+    it.last = r; // dòng cuối (id lớn nhất do ORDER BY id) — dùng cho giá/vat/meta
+    if (r.item_name) it.item_name = r.item_name; // giữ tên hàng khác rỗng gần nhất
+    if (r.unit) it.unit = r.unit;
   }
   await exec.query('DELETE FROM warehouse_stock');
   for (const it of agg.values()) {
@@ -60,7 +62,7 @@ async function rebuildStock(exec) {
       `INSERT INTO warehouse_stock
         (sku, warehouse, team_id, item_name, unit, qty_in, qty_out, qty_on_hand, unit_price, vat_rate, total_value, bin, supplier_id, so_pr, pm, image_url)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [it.sku, it.warehouse, it.last.team_id || null, it.last.item_name, it.last.unit, it.qin, it.qout, onHand,
+      [it.sku, it.warehouse, it.last.team_id || null, it.item_name || it.last.item_name, it.unit || it.last.unit, it.qin, it.qout, onHand,
         price, vat, totalValue, it.last.bin, it.last.supplier_id || null, it.last.so_pr, it.last.pm, it.last.image_url]
     );
   }
