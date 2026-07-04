@@ -13,6 +13,7 @@ export default function Products() {
   const [cat, setCat] = useState('');
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
+  const [imgData, setImgData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -23,14 +24,27 @@ export default function Products() {
     api.get('/suppliers?limit=200').then((r) => setSups(r.data));
   }, []);
 
-  const openNew = () => { setForm({ vat_rate: 0.08 }); setEditing({}); };
-  const openEdit = (row) => { setForm({ ...row }); setEditing(row); };
+  const openNew = () => { setForm({ vat_rate: 0.08 }); setImgData(null); setEditing({}); };
+  const openEdit = (row) => { setForm({ ...row }); setImgData(null); setEditing(row); };
+  const onPickFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => setImgData(rd.result);
+    rd.readAsDataURL(f);
+  };
+  const removeImg = async () => {
+    if (editing.id && form.image_url) await api.del(`/uploads/product/${editing.id}`);
+    setForm({ ...form, image_url: null }); setImgData(null);
+  };
   const save = async () => {
     setBusy(true); setErr('');
     try {
       const payload = { ...form, category_id: form.category_id || null, supplier_id: form.supplier_id || null };
-      if (editing.id) await api.put(`/products/${editing.id}`, payload);
-      else await api.post('/products', payload);
+      let id = editing.id;
+      if (id) await api.put(`/products/${id}`, payload);
+      else { const r = await api.post('/products', payload); id = r.id; }
+      if (imgData) await api.post(`/uploads/product/${id}`, { data: imgData, filename: 'product.png' });
       setEditing(null); load();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -52,10 +66,11 @@ export default function Products() {
         {err && <div className="error">{err}</div>}
         <div className="table-wrap">
           <table>
-            <thead><tr><th>SKU</th><th>Tên</th><th>Loại</th><th>ĐVT</th><th>Đơn giá</th><th>VAT</th><th>NCC</th>{canWrite && <th></th>}</tr></thead>
+            <thead><tr><th>Ảnh</th><th>SKU</th><th>Tên</th><th>Loại</th><th>ĐVT</th><th>Đơn giá</th><th>VAT</th><th>NCC</th>{canWrite && <th></th>}</tr></thead>
             <tbody>
               {rows.map((p) => (
                 <tr key={p.id}>
+                  <td>{p.image_url ? <img src={p.image_url} alt="" style={{ height: 34, width: 34, objectFit: 'cover', borderRadius: 6 }} /> : <span className="muted">—</span>}</td>
                   <td><strong>{p.sku}</strong></td>
                   <td>{p.name}</td>
                   <td>{p.category_name || '-'}</td>
@@ -69,7 +84,7 @@ export default function Products() {
                   </td>}
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan={canWrite ? 8 : 7} className="center-msg">Không có sản phẩm</td></tr>}
+              {!rows.length && <tr><td colSpan={canWrite ? 9 : 8} className="center-msg">Không có sản phẩm</td></tr>}
             </tbody>
           </table>
         </div>
@@ -98,6 +113,14 @@ export default function Products() {
           <div className="row">
             <div className="field"><label>Đơn giá</label><input type="number" value={form.default_price ?? ''} onChange={(e) => setForm({ ...form, default_price: e.target.value })} /></div>
             <div className="field"><label>VAT (0.08 = 8%)</label><input type="number" step="0.01" value={form.vat_rate ?? ''} onChange={(e) => setForm({ ...form, vat_rate: e.target.value })} /></div>
+          </div>
+          <div className="field">
+            <label>Ảnh sản phẩm</label>
+            {(imgData || form.image_url) && (
+              <img src={imgData || form.image_url} alt="" style={{ maxHeight: 100, borderRadius: 8, display: 'block', marginBottom: 6 }} />
+            )}
+            <input type="file" accept="image/*" onChange={onPickFile} />
+            {(imgData || form.image_url) && <button type="button" className="btn-sm btn-danger" style={{ marginTop: 6 }} onClick={removeImg}>Xoá ảnh</button>}
           </div>
           {err && <div className="error">{err}</div>}
         </Modal>

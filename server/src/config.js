@@ -30,6 +30,12 @@ export const config = {
     password: process.env.ADMIN_PASSWORD || 'admin123',
     name: process.env.ADMIN_NAME || 'Administrator',
   },
+  ai: {
+    // Nhà cung cấp LLM: 'anthropic' (mặc định, Claude) hoặc 'openai'. Không có key -> dùng intent router.
+    provider: process.env.AI_PROVIDER || 'anthropic',
+    apiKey: process.env.AI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || '',
+    model: process.env.AI_MODEL || (process.env.AI_PROVIDER === 'openai' ? 'gpt-4o-mini' : 'claude-sonnet-5'),
+  },
   db: {
     host: fromUrl?.host || process.env.DB_HOST || '127.0.0.1',
     port: fromUrl?.port || Number(process.env.DB_PORT || 3306),

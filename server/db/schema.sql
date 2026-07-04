@@ -380,6 +380,22 @@ CREATE TABLE IF NOT EXISTS catalog_access_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
+-- 15. ATTACHMENTS  (ảnh sản phẩm / file đính kèm, lưu base64 trong DB)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS attachments (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  kind        VARCHAR(32) NOT NULL,            -- 'product' | 'order_item'
+  ref_id      BIGINT UNSIGNED NULL,            -- id của product / order_item
+  filename    VARCHAR(255) NULL,
+  mime        VARCHAR(100) NULL,
+  data_base64 LONGTEXT NOT NULL,               -- nội dung ảnh (base64, không kèm tiền tố)
+  uploaded_by VARCHAR(190) NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_attach_ref (kind, ref_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
 -- Foreign keys "mềm" (thêm sau khi bảng đã tồn tại; bỏ qua nếu dữ liệu chưa khớp)
 -- ---------------------------------------------------------------------
 ALTER TABLE users        ADD CONSTRAINT fk_users_team     FOREIGN KEY (team_id)     REFERENCES teams(id)      ON DELETE SET NULL;

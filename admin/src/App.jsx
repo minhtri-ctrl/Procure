@@ -11,6 +11,7 @@ import Users from './pages/Users.jsx';
 import Warehouse from './pages/Warehouse.jsx';
 import Emails from './pages/Emails.jsx';
 import Contracts from './pages/Contracts.jsx';
+import AIAssistant from './pages/AIAssistant.jsx';
 
 const NAV = [
   { section: 'Tổng quan' },
@@ -22,6 +23,7 @@ const NAV = [
   { to: '/warehouse', label: '🏬 Kho hàng' },
   { to: '/contracts', label: '📄 Hợp đồng' },
   { to: '/emails', label: '✉️ Email' },
+  { to: '/ai', label: '🤖 Trợ lý AI' },
   { section: 'Danh mục' },
   { to: '/suppliers', label: '🏢 Nhà cung cấp' },
   { to: '/teams', label: '👥 Team' },
@@ -79,6 +81,7 @@ export default function App() {
         <Route path="/warehouse" element={<Warehouse />} />
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/emails" element={<Emails />} />
+        <Route path="/ai" element={<AIAssistant />} />
         <Route path="/suppliers" element={<CrudPage
           title="Nhà cung cấp" endpoint="/suppliers" canWrite={canWrite}
           columns={[

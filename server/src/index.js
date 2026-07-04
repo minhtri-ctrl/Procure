@@ -15,6 +15,8 @@ import usersRoutes from './routes/users.js';
 import warehouseRoutes from './routes/warehouse.js';
 import emailsRoutes from './routes/emails.js';
 import contractsRoutes from './routes/contracts.js';
+import uploadsRoutes from './routes/uploads.js';
+import aiRoutes from './routes/ai.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -53,6 +55,8 @@ app.use('/api/users', usersRoutes);
 app.use('/api/warehouse', warehouseRoutes);
 app.use('/api/emails', emailsRoutes);
 app.use('/api/contracts', contractsRoutes);
+app.use('/api/uploads', uploadsRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Phục vụ admin build (SPA) từ server/webui.
 // File entry được lưu dưới dạng spa.tpl (KHÔNG phải .html) để deploy runner của
