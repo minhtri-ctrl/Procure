@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, fmtVND, fmtDate } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import Modal from '../components/Modal.jsx';
+import BulkDeleteButton from '../components/BulkDeleteButton.jsx';
 import { LOAI_HH, DIEM_NHAN, HANG_MUC } from '../constants.js';
 
 const STATUS = { new: 'Mới', confirmed: 'Đã duyệt', rejected: 'Từ chối', completed: 'Hoàn tất' };
@@ -9,6 +10,7 @@ const STATUS = { new: 'Mới', confirmed: 'Đã duyệt', rejected: 'Từ chối
 export default function Requests() {
   const { user } = useAuth();
   const canWrite = ['admin', 'purchasing'].includes(user.role);
+  const canPurge = ['admin', 'pm'].includes(user.role);
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
@@ -26,6 +28,11 @@ export default function Requests() {
     alert(`Đã tạo đơn hàng ${r.order_code}`);
     setDetail(null); load();
   };
+  const delOne = async (id, code) => {
+    if (!confirm(`Xóa yêu cầu ${code}? (xóa mềm, có thể khôi phục)`)) return;
+    try { await api.del(`/requests/${id}`); setDetail(null); load(); }
+    catch (e) { alert(e.message); }
+  };
 
   return (
     <>
@@ -39,6 +46,7 @@ export default function Requests() {
           </select>
           <div className="spacer" />
           <button className="btn-primary" onClick={() => setCreating(true)}>+ Tạo yêu cầu</button>
+          {canPurge && <BulkDeleteButton entity="yêu cầu mua" countPath="/requests/count" deletePath="/requests" onDone={(n) => { alert(`Đã xóa ${n} yêu cầu`); load(); }} />}
         </div>
         {err && <div className="error">{err}</div>}
         <div className="table-wrap">
@@ -87,6 +95,11 @@ export default function Requests() {
           {canWrite && detail.status === 'confirmed' && (
             <div className="modal-actions">
               <button className="btn-primary" onClick={() => convert(detail.id)}>Tạo đơn hàng</button>
+            </div>
+          )}
+          {canWrite && (
+            <div className="modal-actions" style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 10 }}>
+              <button className="btn-danger" onClick={() => delOne(detail.id, detail.request_code)}>🗑 Xóa yêu cầu này</button>
             </div>
           )}
         </Modal>

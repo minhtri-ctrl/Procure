@@ -134,6 +134,11 @@ const MIGRATIONS = [
   "ALTER TABLE suppliers ADD COLUMN delivery_person VARCHAR(190) NULL",
   "ALTER TABLE suppliers ADD COLUMN delivery_phone VARCHAR(64) NULL",
   "ALTER TABLE suppliers ADD COLUMN delivery_email VARCHAR(190) NULL",
+  // Soft delete (xóa mềm) cho môi trường test — có thể khôi phục
+  "ALTER TABLE orders ADD COLUMN deleted_at DATETIME NULL",
+  "ALTER TABLE orders ADD COLUMN deleted_by VARCHAR(190) NULL",
+  "ALTER TABLE purchase_requests ADD COLUMN deleted_at DATETIME NULL",
+  "ALTER TABLE purchase_requests ADD COLUMN deleted_by VARCHAR(190) NULL",
 ];
 
 async function runMigrations() {

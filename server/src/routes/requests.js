@@ -7,6 +7,13 @@ import { nextOrderCode } from '../lib/codes.js';
 const router = Router();
 router.use(authRequired);
 
+// Giới hạn theo vai trò: requester -> YC của mình; pm -> team của mình.
+function scopeClause(user, alias = 'r') {
+  if (user.role === 'requester') return { sql: `${alias}.requester_email = ?`, params: [user.email] };
+  if (user.role === 'pm') return { sql: `${alias}.team_id = ?`, params: [user.team_id || 0] };
+  return null;
+}
+
 const HEADER_FIELDS = [
   'request_code', 'requester_name', 'requester_email', 'team_id', 'project_name',
   'request_date', 'expected_date', 'receiving_point', 'design_link', 'status',
@@ -32,11 +39,10 @@ router.get('/', wrap(async (req, res) => {
   const { q, status, team_id, page = 1, limit = 50 } = req.query;
   const lim = Math.min(Number(limit) || 50, 200);
   const off = (Math.max(Number(page) || 1, 1) - 1) * lim;
-  const where = [];
+  const where = ['r.deleted_at IS NULL'];
   const params = [];
-  // requester chỉ thấy YC của mình; pm theo team của mình
-  if (req.user.role === 'requester') { where.push('r.requester_email = ?'); params.push(req.user.email); }
-  else if (req.user.role === 'pm') { where.push('r.team_id = ?'); params.push(req.user.team_id || 0); }
+  const sc = scopeClause(req.user);
+  if (sc) { where.push(sc.sql); params.push(...sc.params); }
   if (q) { where.push('(r.request_code LIKE ? OR r.project_name LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
   if (status) { where.push('r.status = ?'); params.push(status); }
   if (team_id) { where.push('r.team_id = ?'); params.push(team_id); }
@@ -50,6 +56,16 @@ router.get('/', wrap(async (req, res) => {
   );
   const [{ total }] = await query(`SELECT COUNT(*) AS total FROM purchase_requests r ${whereSql}`, params);
   res.json({ data: rows, total, page: Number(page), limit: lim });
+}));
+
+// Đếm số YC hiện có (trong phạm vi user) — cho hộp thoại xác nhận "xóa toàn bộ".
+router.get('/count', wrap(async (req, res) => {
+  const where = ['r.deleted_at IS NULL'];
+  const params = [];
+  const sc = scopeClause(req.user);
+  if (sc) { where.push(sc.sql); params.push(...sc.params); }
+  const [{ total }] = await query(`SELECT COUNT(*) AS total FROM purchase_requests r WHERE ${where.join(' AND ')}`, params);
+  res.json({ total });
 }));
 
 router.get('/:id', wrap(async (req, res) => {
@@ -156,8 +172,34 @@ router.post('/:id/convert', requireRole('admin', 'purchasing'), wrap(async (req,
   }
 }));
 
+// Xóa TOÀN BỘ yêu cầu mua (soft delete) — chỉ admin/PM. PM chỉ xóa trong team mình.
+router.delete('/', requireRole('admin', 'pm'), wrap(async (req, res) => {
+  if (!req.body || req.body.confirm !== true) {
+    return res.status(400).json({ error: 'Cần xác nhận (confirm: true) để xóa toàn bộ' });
+  }
+  const where = ['deleted_at IS NULL'];
+  const params = [];
+  const sc = scopeClause(req.user, 'purchase_requests');
+  if (sc) { where.push(sc.sql); params.push(...sc.params); }
+  const r = await query(
+    `UPDATE purchase_requests SET deleted_at = NOW(), deleted_by = ? WHERE ${where.join(' AND ')}`,
+    [req.user.email, ...params]
+  );
+  res.json({ ok: true, deleted: r.affectedRows });
+}));
+
+// Xóa 1 YC (soft delete).
 router.delete('/:id', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
-  await query('DELETE FROM purchase_requests WHERE id = ?', [req.params.id]);
+  const r = await query(
+    'UPDATE purchase_requests SET deleted_at = NOW(), deleted_by = ? WHERE id = ? AND deleted_at IS NULL',
+    [req.user.email, req.params.id]
+  );
+  res.json({ ok: true, deleted: r.affectedRows });
+}));
+
+// Khôi phục YC đã xóa mềm — admin/PM.
+router.post('/:id/restore', requireRole('admin', 'pm'), wrap(async (req, res) => {
+  await query('UPDATE purchase_requests SET deleted_at = NULL, deleted_by = NULL WHERE id = ?', [req.params.id]);
   res.json({ ok: true });
 }));
 

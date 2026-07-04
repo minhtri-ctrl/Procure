@@ -4,11 +4,13 @@ import { api, fmtVND, fmtDate, getToken } from '../api.js';
 import { useMeta } from '../meta.jsx';
 import { useAuth } from '../auth.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
+import BulkDeleteButton from '../components/BulkDeleteButton.jsx';
 
 export default function Orders() {
   const { states } = useMeta();
   const { user } = useAuth();
   const canWrite = ['admin', 'purchasing'].includes(user.role);
+  const canPurge = ['admin', 'pm'].includes(user.role);
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
@@ -46,6 +48,7 @@ export default function Orders() {
           <button onClick={() => download('xlsx')}>⬇ Excel</button>
           <button onClick={() => download('csv')}>⬇ CSV</button>
           {canWrite && <button className="btn-primary" onClick={() => nav('/orders/new')}>+ Tạo đơn</button>}
+          {canPurge && <BulkDeleteButton entity="đơn hàng" countPath="/orders/count" deletePath="/orders" onDone={(n) => { alert(`Đã xóa ${n} đơn hàng`); load(); }} />}
         </div>
         {err && <div className="error">{err}</div>}
         <div className="table-wrap">

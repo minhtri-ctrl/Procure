@@ -59,7 +59,7 @@ router.get('/', wrap(async (req, res) => {
   const { q, status, team_id, supplier_id, page = 1, limit = 50 } = req.query;
   const lim = Math.min(Number(limit) || 50, 200);
   const off = (Math.max(Number(page) || 1, 1) - 1) * lim;
-  const where = [];
+  const where = ['o.deleted_at IS NULL'];
   const params = [];
   const sc = scopeClause(req.user);
   if (sc) { where.push(sc.sql); params.push(...sc.params); }
@@ -85,7 +85,7 @@ router.get('/', wrap(async (req, res) => {
 // EXPORT CSV/Excel dữ liệu mua hàng (phẳng theo dòng hàng).
 router.get('/export', wrap(async (req, res) => {
   const format = (req.query.format || 'xlsx').toLowerCase();
-  const where = [];
+  const where = ['o.deleted_at IS NULL'];
   const params = [];
   const sc = scopeClause(req.user);
   if (sc) { where.push(sc.sql); params.push(...sc.params); }
@@ -118,6 +118,16 @@ router.get('/export', wrap(async (req, res) => {
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', 'attachment; filename="procureos-orders.xlsx"');
   res.send(buf);
+}));
+
+// Đếm số đơn hàng hiện có (trong phạm vi của user) — dùng cho hộp thoại xác nhận "xóa toàn bộ".
+router.get('/count', wrap(async (req, res) => {
+  const where = ['o.deleted_at IS NULL'];
+  const params = [];
+  const sc = scopeClause(req.user);
+  if (sc) { where.push(sc.sql); params.push(...sc.params); }
+  const [{ total }] = await query(`SELECT COUNT(*) AS total FROM orders o WHERE ${where.join(' AND ')}`, params);
+  res.json({ total });
 }));
 
 // GET one + items + lịch sử
@@ -223,8 +233,35 @@ router.get('/:id/history', wrap(async (req, res) => {
   res.json({ data: await query('SELECT * FROM order_status_history WHERE order_id = ? ORDER BY id', [req.params.id]) });
 }));
 
+// Xóa TOÀN BỘ đơn hàng (soft delete) — chỉ admin/PM. PM chỉ xóa trong phạm vi team mình.
+// Yêu cầu body { confirm: true } để tránh gọi nhầm.
+router.delete('/', requireRole('admin', 'pm'), wrap(async (req, res) => {
+  if (!req.body || req.body.confirm !== true) {
+    return res.status(400).json({ error: 'Cần xác nhận (confirm: true) để xóa toàn bộ' });
+  }
+  const where = ['deleted_at IS NULL'];
+  const params = [];
+  const sc = scopeClause(req.user, 'orders');
+  if (sc) { where.push(sc.sql); params.push(...sc.params); }
+  const r = await query(
+    `UPDATE orders SET deleted_at = NOW(), deleted_by = ? WHERE ${where.join(' AND ')}`,
+    [req.user.email, ...params]
+  );
+  res.json({ ok: true, deleted: r.affectedRows });
+}));
+
+// Xóa 1 đơn hàng (soft delete) — có thể khôi phục.
 router.delete('/:id', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
-  await query('DELETE FROM orders WHERE id = ?', [req.params.id]);
+  const r = await query(
+    'UPDATE orders SET deleted_at = NOW(), deleted_by = ? WHERE id = ? AND deleted_at IS NULL',
+    [req.user.email, req.params.id]
+  );
+  res.json({ ok: true, deleted: r.affectedRows });
+}));
+
+// Khôi phục đơn hàng đã xóa mềm — admin/PM.
+router.post('/:id/restore', requireRole('admin', 'pm'), wrap(async (req, res) => {
+  await query('UPDATE orders SET deleted_at = NULL, deleted_by = NULL WHERE id = ?', [req.params.id]);
   res.json({ ok: true });
 }));
 

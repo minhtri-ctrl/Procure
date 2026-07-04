@@ -36,7 +36,7 @@ export default function OrderDetail() {
     try { const r = await api.post('/emails/send', { order_id: Number(id), type }); setMsg(`Đã gửi email tới ${r.to || '(chưa có email)'}`); load(); }
     catch (e) { setErr(e.message); }
   };
-  const del = async () => { if (confirm('Xoá đơn hàng này?')) { await api.del(`/orders/${id}`); nav('/orders'); } };
+  const del = async () => { if (confirm('Xoá đơn hàng này? (xóa mềm, có thể khôi phục)')) { await api.del(`/orders/${id}`); nav('/orders'); } };
   const toCatalog = async (itemId) => {
     setErr(''); setMsg('');
     try { const r = await api.post(`/orders/items/${itemId}/to-catalog`); setMsg(`Đã đẩy sang Danh mục SP — mã hàng ${r.item_code}, chờ nhập kho`); load(); }
