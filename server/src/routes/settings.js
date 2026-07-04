@@ -52,4 +52,10 @@ router.put('/:key', authRequired, requireRole('admin'), wrap(async (req, res) =>
   res.json({ ok: true });
 }));
 
+// Xoá 1 key (VD: bỏ mẫu .docx admin đã upload để quay lại dùng file mặc định trong repo).
+router.delete('/:key', authRequired, requireRole('admin'), wrap(async (req, res) => {
+  await query('DELETE FROM settings WHERE `key` = ?', [req.params.key]);
+  res.json({ ok: true });
+}));
+
 export default router;

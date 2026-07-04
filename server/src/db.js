@@ -139,6 +139,9 @@ const MIGRATIONS = [
   "ALTER TABLE orders ADD COLUMN deleted_by VARCHAR(190) NULL",
   "ALTER TABLE purchase_requests ADD COLUMN deleted_at DATETIME NULL",
   "ALTER TABLE purchase_requests ADD COLUMN deleted_by VARCHAR(190) NULL",
+  // settings.value là TEXT (giới hạn 64KB) làm base64 mẫu .docx (~350-490KB) bị cắt cụt -> "Corrupted zip"
+  // khi tải hợp đồng .docx. Mở rộng sang LONGTEXT để chứa trọn file mẫu.
+  "ALTER TABLE settings MODIFY value LONGTEXT NULL",
 ];
 
 async function runMigrations() {
