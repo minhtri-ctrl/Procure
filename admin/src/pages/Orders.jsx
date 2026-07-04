@@ -33,19 +33,19 @@ export default function Orders() {
     <>
       <div className="topbar">
         <h1>Đơn hàng</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => download('xlsx')}>⬇ Excel</button>
-          <button onClick={() => download('csv')}>⬇ CSV</button>
-          {canWrite && <button className="btn-primary" onClick={() => nav('/orders/new')}>+ Tạo đơn mới</button>}
-        </div>
+        {canWrite && <button className="btn-primary" onClick={() => nav('/orders/new')}>+ Tạo đơn mới</button>}
       </div>
       <div className="content">
         <div className="toolbar">
           <input className="search" placeholder="Tìm mã đơn / dự án…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <select style={{ width: 200 }} value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select style={{ width: 180 }} value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Tất cả trạng thái</option>
             {states.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
           </select>
+          <div className="spacer" />
+          <button onClick={() => download('xlsx')}>⬇ Excel</button>
+          <button onClick={() => download('csv')}>⬇ CSV</button>
+          {canWrite && <button className="btn-primary" onClick={() => nav('/orders/new')}>+ Tạo đơn</button>}
         </div>
         {err && <div className="error">{err}</div>}
         <div className="table-wrap">
@@ -57,9 +57,9 @@ export default function Orders() {
               {rows.map((o) => (
                 <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => nav(`/orders/${o.id}`)}>
                   <td><strong>{o.order_code}</strong></td>
-                  <td>{o.project_name}</td>
+                  <td className="truncate" title={o.project_name}>{o.project_name}</td>
                   <td>{o.team_name || '-'}</td>
-                  <td>{o.supplier_name || '-'}</td>
+                  <td className="truncate" title={o.supplier_name}>{o.supplier_name || '-'}</td>
                   <td>{fmtDate(o.request_date)}</td>
                   <td>{o.item_count}</td>
                   <td>{fmtVND(o.total_amount)}</td>

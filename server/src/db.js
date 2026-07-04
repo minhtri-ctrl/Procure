@@ -114,6 +114,11 @@ const MIGRATIONS = [
   "ALTER TABLE order_items ADD COLUMN loai_hh VARCHAR(190) NULL",
   "ALTER TABLE order_items ADD COLUMN rental_start DATE NULL",
   "ALTER TABLE order_items ADD COLUMN rental_end DATE NULL",
+  // Form yêu cầu mua đầy đủ như đơn hàng
+  "ALTER TABLE purchase_requests ADD COLUMN hang_muc VARCHAR(190) NULL",
+  "ALTER TABLE purchase_requests ADD COLUMN pm VARCHAR(190) NULL",
+  "ALTER TABLE request_items ADD COLUMN loai_hh VARCHAR(190) NULL",
+  "ALTER TABLE request_items ADD COLUMN unit VARCHAR(64) NULL",
   // Đợt 2 (v2): vai trò PM, custom fields, QĐNB, thông tin NCC mở rộng, aliases loại hàng
   "ALTER TABLE users MODIFY role ENUM('admin','purchasing','warehouse','requester','pm') NOT NULL DEFAULT 'requester'",
   "ALTER TABLE orders ADD COLUMN qdnb_tbkm VARCHAR(190) NULL",

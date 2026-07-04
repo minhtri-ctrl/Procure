@@ -97,7 +97,10 @@ export default function CreateOrder() {
           <div className="row">
             <div className="field"><label>Tên người YC</label><input value={header.requester_name} onChange={(e) => setH('requester_name', e.target.value)} /></div>
             <div className="field"><label>Team *</label>
-              <select value={header.team_id} onChange={(e) => setH('team_id', e.target.value)}>
+              <select value={header.team_id} onChange={(e) => {
+                const t = teams.find((x) => String(x.id) === e.target.value);
+                setHeader({ ...header, team_id: e.target.value, pm: t?.lead_name || header.pm });
+              }}>
                 <option value="">-- Chọn team --</option>
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>

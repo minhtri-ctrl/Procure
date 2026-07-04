@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, fmtVND, fmtDate } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import Modal from '../components/Modal.jsx';
+import { LOAI_HH, DIEM_NHAN, HANG_MUC } from '../constants.js';
 
 const STATUS = { new: 'Mới', confirmed: 'Đã duyệt', rejected: 'Từ chối', completed: 'Hoàn tất' };
 
@@ -97,22 +98,37 @@ export default function Requests() {
 }
 
 function RequestForm({ onClose, onSaved }) {
+  const { user } = useAuth();
   const [teams, setTeams] = useState([]);
-  const [form, setForm] = useState({ project_name: '', team_id: '', request_date: '', expected_date: '', note: '' });
-  const [items, setItems] = useState([{ item_name: '', quantity: 1, budget: '', suggested_supplier: '' }]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [diemCustom, setDiemCustom] = useState(false);
+  const [form, setForm] = useState({
+    project_name: '', team_id: '', pm: '', requester_name: user.name, requester_email: user.email,
+    hang_muc: 'Mua sắm / sản xuất', receiving_point: '', request_date: '', expected_date: '', note: '',
+  });
+  const [items, setItems] = useState([{ loai_hh: 'Vật phẩm', item_name: '', description: '', unit: 'cái', quantity: 1, budget: '', suggested_supplier: '' }]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  useEffect(() => { api.get('/teams?limit=200').then((r) => setTeams(r.data)); }, []);
+  useEffect(() => {
+    api.get('/teams?limit=200').then((r) => setTeams(r.data));
+    api.get('/suppliers?limit=500').then((r) => setSuppliers(r.data));
+  }, []);
 
+  const setF = (k, v) => setForm({ ...form, [k]: v });
+  const pickTeam = (id) => { const t = teams.find((x) => String(x.id) === id); setForm({ ...form, team_id: id, pm: t?.lead_name || form.pm }); };
   const setItem = (i, k, v) => setItems(items.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)));
-  const addItem = () => setItems([...items, { item_name: '', quantity: 1, budget: '', suggested_supplier: '' }]);
+  const addItem = () => setItems([...items, { loai_hh: 'Vật phẩm', item_name: '', description: '', unit: 'cái', quantity: 1, budget: '', suggested_supplier: '' }]);
   const rmItem = (i) => setItems(items.filter((_, idx) => idx !== i));
 
   const save = async () => {
-    setBusy(true); setErr('');
+    setErr('');
+    if (!form.project_name) { setErr('Nhập tên dự án'); return; }
+    const rows = items.filter((it) => it.item_name);
+    if (!rows.length) { setErr('Cần ít nhất 1 dòng hàng'); return; }
+    setBusy(true);
     try {
-      await api.post('/requests', { ...form, team_id: form.team_id || null, items: items.filter((it) => it.item_name) });
+      await api.post('/requests', { ...form, team_id: form.team_id || null, items: rows });
       onSaved();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -120,27 +136,57 @@ function RequestForm({ onClose, onSaved }) {
   return (
     <Modal title="Tạo yêu cầu mua" onClose={onClose} onSubmit={save} busy={busy} submitLabel="Gửi yêu cầu">
       <div className="row">
-        <div className="field"><label>Tên dự án *</label><input required value={form.project_name} onChange={(e) => setForm({ ...form, project_name: e.target.value })} /></div>
+        <div className="field"><label>Tên dự án *</label><input required value={form.project_name} onChange={(e) => setF('project_name', e.target.value)} /></div>
         <div className="field"><label>Team</label>
-          <select value={form.team_id} onChange={(e) => setForm({ ...form, team_id: e.target.value })}>
-            <option value="">-- chọn --</option>
-            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          <select value={form.team_id} onChange={(e) => pickTeam(e.target.value)}>
+            <option value="">-- chọn --</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
+        </div>
+        <div className="field"><label>PM</label><input value={form.pm} onChange={(e) => setF('pm', e.target.value)} /></div>
+      </div>
+      <div className="row">
+        <div className="field"><label>Người yêu cầu</label><input value={form.requester_name} onChange={(e) => setF('requester_name', e.target.value)} /></div>
+        <div className="field"><label>Email</label><input type="email" value={form.requester_email} onChange={(e) => setF('requester_email', e.target.value)} /></div>
+        <div className="field"><label>Hạng mục</label>
+          <select value={form.hang_muc} onChange={(e) => setF('hang_muc', e.target.value)}>{HANG_MUC.map((h) => <option key={h} value={h}>{h}</option>)}</select>
         </div>
       </div>
       <div className="row">
-        <div className="field"><label>Ngày yêu cầu</label><input type="date" value={form.request_date} onChange={(e) => setForm({ ...form, request_date: e.target.value })} /></div>
-        <div className="field"><label>Cần trước ngày</label><input type="date" value={form.expected_date} onChange={(e) => setForm({ ...form, expected_date: e.target.value })} /></div>
-      </div>
-      <label>Danh sách hàng</label>
-      {items.map((it, i) => (
-        <div className="row" key={i} style={{ marginBottom: 8 }}>
-          <input placeholder="Tên hàng" value={it.item_name} onChange={(e) => setItem(i, 'item_name', e.target.value)} />
-          <input placeholder="SL" type="number" style={{ maxWidth: 80 }} value={it.quantity} onChange={(e) => setItem(i, 'quantity', e.target.value)} />
-          <input placeholder="Ngân sách" type="number" value={it.budget} onChange={(e) => setItem(i, 'budget', e.target.value)} />
-          <button type="button" className="btn-sm btn-danger" onClick={() => rmItem(i)}>×</button>
+        <div className="field"><label>Ngày yêu cầu</label><input type="date" value={form.request_date} onChange={(e) => setF('request_date', e.target.value)} /></div>
+        <div className="field"><label>Cần trước ngày</label><input type="date" value={form.expected_date} onChange={(e) => setF('expected_date', e.target.value)} /></div>
+        <div className="field"><label>Điểm nhận</label>
+          <select value={diemCustom ? '__c' : form.receiving_point} onChange={(e) => {
+            if (e.target.value === '__c') { setDiemCustom(true); setF('receiving_point', ''); }
+            else { setDiemCustom(false); setF('receiving_point', e.target.value); }
+          }}>
+            <option value="">-- chọn --</option>{DIEM_NHAN.map((d) => <option key={d} value={d}>{d}</option>)}<option value="__c">Khác</option>
+          </select>
         </div>
-      ))}
+      </div>
+      {diemCustom && <div className="field"><input placeholder="Nhập điểm nhận" value={form.receiving_point} onChange={(e) => setF('receiving_point', e.target.value)} /></div>}
+      <div className="field"><label>Ghi chú chung</label><input value={form.note} onChange={(e) => setF('note', e.target.value)} /></div>
+
+      <label>Danh sách hàng cần mua</label>
+      <div className="table-wrap" style={{ marginBottom: 8 }}>
+        <table><thead><tr><th>Loại HH</th><th>Tên hàng</th><th>Mô tả</th><th>SL</th><th>ĐVT</th><th>Ngân sách</th><th>NCC đề xuất</th><th></th></tr></thead>
+          <tbody>
+            {items.map((it, i) => (
+              <tr key={i}>
+                <td><select style={{ minWidth: 110 }} value={it.loai_hh} onChange={(e) => setItem(i, 'loai_hh', e.target.value)}>{LOAI_HH.map((x) => <option key={x} value={x}>{x}</option>)}</select></td>
+                <td><input style={{ minWidth: 130 }} value={it.item_name} onChange={(e) => setItem(i, 'item_name', e.target.value)} /></td>
+                <td><input style={{ minWidth: 110 }} value={it.description} onChange={(e) => setItem(i, 'description', e.target.value)} /></td>
+                <td><input type="number" style={{ width: 55 }} value={it.quantity} onChange={(e) => setItem(i, 'quantity', e.target.value)} /></td>
+                <td><input style={{ width: 55 }} value={it.unit} onChange={(e) => setItem(i, 'unit', e.target.value)} /></td>
+                <td><input type="number" style={{ width: 100 }} value={it.budget} onChange={(e) => setItem(i, 'budget', e.target.value)} /></td>
+                <td><select style={{ minWidth: 110 }} value={it.suggested_supplier} onChange={(e) => setItem(i, 'suggested_supplier', e.target.value)}>
+                  <option value="">--</option>{suppliers.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                </select></td>
+                <td><button type="button" className="btn-sm btn-danger" onClick={() => rmItem(i)}>×</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <button type="button" className="btn-sm" onClick={addItem}>+ Thêm dòng</button>
       {err && <div className="error">{err}</div>}
     </Modal>

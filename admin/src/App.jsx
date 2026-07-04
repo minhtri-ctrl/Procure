@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './auth.jsx';
 import { MetaProvider } from './meta.jsx';
@@ -44,22 +45,36 @@ const NAV = [
 
 function Layout({ children }) {
   const { user, logout } = useAuth();
+  const loc = useLocation();
+  // Gom NAV thành các nhóm, lọc theo vai trò, bỏ nhóm rỗng.
+  const groups = [];
+  let cur = null;
+  for (const it of NAV) {
+    if (it.section) { cur = { title: it.section, items: [] }; groups.push(cur); }
+    else if (cur && (!it.roles || it.roles.includes(user.role))) cur.items.push(it);
+  }
+  const visible = groups.filter((g) => g.items.length);
+  const activeTitle = visible.find((g) => g.items.some((i) => i.to === loc.pathname || (i.to !== '/' && loc.pathname.startsWith(i.to))))?.title;
+  const [open, setOpen] = useState(activeTitle || visible[0]?.title);
+  useEffect(() => { if (activeTitle) setOpen(activeTitle); }, [activeTitle]);
+
   return (
     <div className="layout">
       <aside className="sidebar">
         <div className="brand">Procure<span>OS</span></div>
         <nav>
-          {NAV.map((item, i) =>
-            item.section ? (
-              (!item.roles || item.roles.includes(user.role)) && <div className="section" key={i}>{item.section}</div>
-            ) : (
-              (!item.roles || item.roles.includes(user.role)) && (
+          {visible.map((g) => (
+            <div key={g.title}>
+              <div className={`grp-hd${open === g.title ? ' open' : ''}`} onClick={() => setOpen(open === g.title ? null : g.title)}>
+                <span>{g.title}</span><span className="chev">▶</span>
+              </div>
+              {open === g.title && g.items.map((item) => (
                 <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => (isActive ? 'active' : '')}>
                   {item.label}
                 </NavLink>
-              )
-            )
-          )}
+              ))}
+            </div>
+          ))}
         </nav>
         <div className="user">
           <div><strong>{user.name || user.email}</strong></div>

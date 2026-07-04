@@ -10,9 +10,9 @@ router.use(authRequired);
 const HEADER_FIELDS = [
   'request_code', 'requester_name', 'requester_email', 'team_id', 'project_name',
   'request_date', 'expected_date', 'receiving_point', 'design_link', 'status',
-  'confirmed_date', 'purchasing_note', 'note',
+  'confirmed_date', 'purchasing_note', 'note', 'hang_muc', 'pm',
 ];
-const ITEM_FIELDS = ['line_no', 'item_name', 'description', 'quantity', 'budget', 'suggested_supplier', 'note'];
+const ITEM_FIELDS = ['line_no', 'item_name', 'loai_hh', 'unit', 'description', 'quantity', 'budget', 'suggested_supplier', 'note'];
 
 // Sinh mã YC dạng TEAM-YYMM-NNNN
 async function genRequestCode(teamId) {
@@ -128,9 +128,9 @@ router.post('/:id/convert', requireRole('admin', 'purchasing'), wrap(async (req,
   try {
     await conn.beginTransaction();
     await conn.query(
-      `INSERT INTO orders (order_code, requester_email, requester_name, team_id, project_name, request_date, expected_date, receiving_point, status, note)
-       VALUES (?,?,?,?,?,?,?,?, 'new', ?)`,
-      [orderCode, r.requester_email, r.requester_name, r.team_id, r.project_name, r.request_date, r.expected_date, r.receiving_point, r.note]
+      `INSERT INTO orders (order_code, requester_email, requester_name, team_id, project_name, request_date, expected_date, receiving_point, hang_muc, pm, status, note)
+       VALUES (?,?,?,?,?,?,?,?,?,?, 'new', ?)`,
+      [orderCode, r.requester_email, r.requester_name, r.team_id, r.project_name, r.request_date, r.expected_date, r.receiving_point, r.hang_muc, r.pm, r.note]
     );
     const [[{ id: orderId }]] = await conn.query('SELECT LAST_INSERT_ID() AS id');
     let total = 0;
@@ -139,9 +139,9 @@ router.post('/:id/convert', requireRole('admin', 'purchasing'), wrap(async (req,
       const lineTotal = Math.round(price * Number(it.quantity || 0));
       total += lineTotal;
       await conn.query(
-        `INSERT INTO order_items (order_id, item_name, description, unit, quantity, unit_price, line_total)
-         VALUES (?,?,?,?,?,?,?)`,
-        [orderId, it.item_name, it.description, null, it.quantity, price, lineTotal]
+        `INSERT INTO order_items (order_id, item_name, loai_hh, description, unit, quantity, unit_price, line_total)
+         VALUES (?,?,?,?,?,?,?,?)`,
+        [orderId, it.item_name, it.loai_hh, it.description, it.unit, it.quantity, price, lineTotal]
       );
     }
     await conn.query('UPDATE orders SET total_amount = ? WHERE id = ?', [total, orderId]);
