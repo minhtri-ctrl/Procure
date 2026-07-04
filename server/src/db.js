@@ -159,6 +159,7 @@ const DEFAULT_WORKFLOW = [
   ['new', 'Mới', '#64748b', 10, 'buyer', 0],
   ['in_progress', 'Đang xử lý', '#2563eb', 20, 'buyer', 0],
   ['quoted', 'Đã báo giá', '#7c3aed', 30, 'buyer', 0],
+  ['pending_confirmation', 'Chờ xác nhận báo giá', '#db2777', 35, 'requester', 0],
   ['confirmed', 'Requester xác nhận', '#0891b2', 40, 'requester', 0],
   ['ordered', 'Đã đặt hàng NCC', '#d97706', 50, 'buyer', 0],
   ['received', 'Đã nhận hàng', '#0d9488', 60, 'buyer', 0],
@@ -172,12 +173,20 @@ const DEFAULT_WORKFLOW = [
 
 async function ensureWorkflow() {
   const [{ c }] = await query('SELECT COUNT(*) AS c FROM workflow_states');
-  if (c > 0) return;
-  for (const [code, name, color, sort, actor, term] of DEFAULT_WORKFLOW) {
-    await query('INSERT INTO workflow_states (code, name, color, sort_order, actor, is_terminal) VALUES (?,?,?,?,?,?)',
+  if (c === 0) {
+    for (const [code, name, color, sort, actor, term] of DEFAULT_WORKFLOW) {
+      await query('INSERT INTO workflow_states (code, name, color, sort_order, actor, is_terminal) VALUES (?,?,?,?,?,?)',
+        [code, name, color, sort, actor, term]);
+    }
+    console.log('[db] Đã tạo workflow mặc định.');
+    return;
+  }
+  // DB đã có workflow — bổ sung các state mới thêm về sau (idempotent, không đè state đã có).
+  const EXTRA = [['pending_confirmation', 'Chờ xác nhận báo giá', '#db2777', 35, 'requester', 0]];
+  for (const [code, name, color, sort, actor, term] of EXTRA) {
+    await query('INSERT INTO workflow_states (code, name, color, sort_order, actor, is_terminal) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE code = code',
       [code, name, color, sort, actor, term]);
   }
-  console.log('[db] Đã tạo workflow mặc định.');
 }
 
 // Theme mặc định (CSS variables) — admin chỉnh trong trang Giao diện.

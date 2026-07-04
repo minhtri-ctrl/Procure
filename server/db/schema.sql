@@ -426,6 +426,28 @@ CREATE TABLE IF NOT EXISTS order_status_history (
   KEY idx_osh_order (order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Thông báo in-app + "tác vụ chờ xác nhận" (vd: Requester xác nhận báo giá).
+CREATE TABLE IF NOT EXISTS notifications (
+  id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  recipient_email VARCHAR(190) NOT NULL,
+  type            VARCHAR(50) NOT NULL DEFAULT 'info',
+  title           VARCHAR(255) NOT NULL,
+  body            VARCHAR(1000) NULL,
+  order_id        BIGINT UNSIGNED NULL,
+  link            VARCHAR(255) NULL,
+  requires_action TINYINT(1) NOT NULL DEFAULT 0,
+  action_status   VARCHAR(20) NOT NULL DEFAULT 'none', -- none | pending | confirmed | rejected
+  action_note     VARCHAR(500) NULL,
+  is_read         TINYINT(1) NOT NULL DEFAULT 0,
+  created_by      VARCHAR(190) NULL,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  read_at         DATETIME NULL,
+  resolved_at     DATETIME NULL,
+  PRIMARY KEY (id),
+  KEY idx_notif_recipient (recipient_email, is_read),
+  KEY idx_notif_order (order_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------------------------------------------------------------------
 -- Foreign keys "mềm" (thêm sau khi bảng đã tồn tại; bỏ qua nếu dữ liệu chưa khớp)
 -- ---------------------------------------------------------------------

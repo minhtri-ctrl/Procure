@@ -7,6 +7,7 @@ import { LOAI_HH } from '../constants.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import Modal from '../components/Modal.jsx';
 import SupplierSelect from '../components/SupplierSelect.jsx';
+import { LINE_STATUSES, normalizeLineStatus } from '../lineStatus.js';
 
 export default function OrderDetail() {
   const { id } = useParams();
@@ -43,6 +44,26 @@ export default function OrderDetail() {
     catch (e) { setErr(e.message); }
   };
   const handover = async (itemId) => { try { await api.post(`/orders/items/${itemId}/handover`); setMsg('Đã bàn giao trực tiếp'); load(); } catch (e) { setErr(e.message); } };
+  const setLineStatus = async (itemId, code) => {
+    setErr(''); setMsg('');
+    try { await api.patch(`/orders/items/${itemId}/progress`, { progress: code }); load(); }
+    catch (e) { setErr(e.message); }
+  };
+  const sendQuote = async () => {
+    setErr(''); setMsg('');
+    if (!confirm('Gửi báo giá để Requester xác nhận? Đơn sẽ chuyển sang "Chờ xác nhận báo giá".')) return;
+    try { await api.post(`/orders/${id}/send-quote`); setMsg('Đã gửi báo giá — chờ Requester xác nhận'); load(); }
+    catch (e) { setErr(e.message); }
+  };
+  const quoteResponse = async (decision) => {
+    setErr(''); setMsg('');
+    try { await api.post(`/orders/${id}/quote-response`, { decision, note }); setNote(''); load(); setMsg(decision === 'confirm' ? 'Đã xác nhận báo giá' : 'Đã từ chối báo giá'); }
+    catch (e) { setErr(e.message); }
+  };
+
+  // Requester (hoặc admin thay mặt) được xác nhận khi đơn đang chờ xác nhận báo giá.
+  const isOwner = o && o.requester_email && o.requester_email === user.email;
+  const canRespondQuote = o && o.status === 'pending_confirmation' && (user.role === 'admin' || isOwner);
 
   if (err && !o) return <><div className="topbar"><h1>Chi tiết đơn</h1></div><div className="content"><div className="error">{err}</div></div></>;
   if (!o) return <div className="content center-msg">Đang tải…</div>;
@@ -60,6 +81,18 @@ export default function OrderDetail() {
       <div className="content">
         {msg && <div style={{ color: 'var(--green)', marginBottom: 10 }}>{msg}</div>}
         {err && <div className="error">{err}</div>}
+
+        {canRespondQuote && (
+          <div className="card" style={{ marginBottom: 16, border: '2px solid #db2777', background: '#fdf2f8' }}>
+            <h3 style={{ marginTop: 0, color: '#db2777' }}>⏳ Báo giá chờ bạn xác nhận</h3>
+            <p style={{ marginTop: 0 }}>Tổng giá trị: <strong>{fmtVND(o.total_amount)}</strong>. Vui lòng kiểm tra chi tiết hàng bên dưới rồi xác nhận hoặc từ chối (kèm ghi chú nếu từ chối).</p>
+            <div className="field"><label>Ghi chú (bắt buộc khi từ chối)</label><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Lý do từ chối / góp ý…" /></div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => quoteResponse('confirm')} style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 'var(--radius)', cursor: 'pointer', fontWeight: 600 }}>✅ Xác nhận báo giá</button>
+              <button onClick={() => { if (!note.trim()) { setErr('Vui lòng nhập lý do từ chối'); return; } quoteResponse('reject'); }} style={{ background: '#b91c1c', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 'var(--radius)', cursor: 'pointer', fontWeight: 600 }}>❌ Từ chối</button>
+            </div>
+          </div>
+        )}
 
         <div className="grid cols-2">
           <div className="card">
@@ -87,6 +120,11 @@ export default function OrderDetail() {
             </div>
             <div className="field"><label>Ghi chú</label><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Lý do / ghi chú" /></div>
             <button className="btn-primary" onClick={changeStatus}>Cập nhật tiến trình</button>
+            {canWrite && o.status !== 'pending_confirmation' && (
+              <button onClick={sendQuote} style={{ marginTop: 8, width: '100%', background: '#db2777', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: 'var(--radius)', cursor: 'pointer', fontWeight: 600 }}>
+                📩 Gửi báo giá để Requester xác nhận
+              </button>
+            )}
 
             {canWrite && (
               <div style={{ marginTop: 14 }}>
@@ -130,7 +168,13 @@ export default function OrderDetail() {
                     <td className="r"><strong>{fmtVND(it.line_total)}</strong></td>
                     <td>{it.supplier_name || '-'}</td>
                     <td>{it.quotation_url ? <a href={it.quotation_url} target="_blank" rel="noreferrer">📎</a> : '-'}</td>
-                    <td>{it.progress || it.nhap_kho || '-'}</td>
+                    <td>
+                      {canWrite ? (
+                        <select value={normalizeLineStatus(it.progress)} onChange={(e) => setLineStatus(it.id, e.target.value)}>
+                          {LINE_STATUSES.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
+                        </select>
+                      ) : (LINE_STATUSES.find((s) => s.code === normalizeLineStatus(it.progress))?.name || '-')}
+                    </td>
                     {canWrite && (
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button className="btn-sm" onClick={() => setEditing(it)}>Sửa</button>{' '}

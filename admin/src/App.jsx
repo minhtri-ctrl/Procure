@@ -18,6 +18,8 @@ import Warehouse from './pages/Warehouse.jsx';
 import Emails from './pages/Emails.jsx';
 import Contracts from './pages/Contracts.jsx';
 import AIAssistant from './pages/AIAssistant.jsx';
+import ItemBoard from './pages/ItemBoard.jsx';
+import NotificationBell from './components/NotificationBell.jsx';
 
 const ALL = ['admin', 'purchasing', 'warehouse', 'requester', 'pm'];
 const OPS = ['admin', 'purchasing']; // buyer/admin thao tác
@@ -26,6 +28,7 @@ const NAV = [
   { to: '/', label: '📊 Dashboard', end: true, roles: OPS },
   { section: 'Nghiệp vụ', roles: ALL },
   { to: '/orders', label: '📦 Đơn hàng', roles: ['admin', 'purchasing', 'pm', 'requester'] },
+  { to: '/item-board', label: '🧩 Xử lý mặt hàng', roles: OPS },
   { to: '/requests', label: '📝 Yêu cầu mua', roles: ['admin', 'purchasing', 'pm', 'requester'] },
   { to: '/products', label: '🛒 Danh mục SP', roles: OPS },
   { to: '/warehouse', label: '🏬 Kho hàng', roles: ['admin', 'purchasing', 'warehouse'] },
@@ -77,7 +80,10 @@ function Layout({ children }) {
           ))}
         </nav>
         <div className="user">
-          <div><strong>{user.name || user.email}</strong></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <strong>{user.name || user.email}</strong>
+            <NotificationBell />
+          </div>
           <div className="muted">{user.role}</div>
           <button className="btn-sm" onClick={logout}>Đăng xuất</button>
         </div>
@@ -103,6 +109,7 @@ export default function App() {
         <Route path="/orders" element={<Orders />} />
         <Route path="/orders/new" element={<CreateOrder />} />
         <Route path="/orders/:id" element={<OrderDetail />} />
+        <Route path="/item-board" element={['admin', 'purchasing'].includes(user.role) ? <ItemBoard /> : <Navigate to="/orders" replace />} />
         <Route path="/requests" element={<Requests />} />
         <Route path="/products" element={<Products />} />
         <Route path="/warehouse" element={<Warehouse />} />

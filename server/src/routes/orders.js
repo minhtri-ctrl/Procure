@@ -4,6 +4,8 @@ import { query, pool } from '../db.js';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap, pick } from '../util.js';
 import { nextOrderCode, nextItemCode } from '../lib/codes.js';
+import { normalizeLineStatus, LINE_STATUS_CODES } from '../lib/lineStatus.js';
+import { createNotification } from '../lib/notify.js';
 
 const router = Router();
 router.use(authRequired);
@@ -130,6 +132,36 @@ router.get('/count', wrap(async (req, res) => {
   res.json({ total });
 }));
 
+// LIST tất cả DÒNG HÀNG (mọi đơn, theo scope) — cho màn "Xử lý mặt hàng" của Buyer.
+// Trả line_status (code chuẩn hoá từ order_items.progress) để gom nhóm theo trạng thái.
+router.get('/items/all', wrap(async (req, res) => {
+  const { q, line_status, team_id, supplier_id } = req.query;
+  const where = ['o.deleted_at IS NULL'];
+  const params = [];
+  const sc = scopeClause(req.user);
+  if (sc) { where.push(sc.sql); params.push(...sc.params); }
+  if (q) { where.push('(o.order_code LIKE ? OR i.item_name LIKE ? OR o.project_name LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+  if (team_id) { where.push('o.team_id = ?'); params.push(team_id); }
+  if (supplier_id) { where.push('i.supplier_id = ?'); params.push(supplier_id); }
+  const rows = await query(
+    `SELECT i.id, i.order_id, i.item_name, i.loai_hh, i.unit, i.quantity, i.unit_price, i.line_total,
+            i.progress, i.nhap_kho, i.in_catalog, i.item_code,
+            o.order_code, o.project_name, o.status AS order_status, o.requester_name, o.expected_date,
+            t.name AS team_name, s.name AS supplier_name
+     FROM order_items i
+     JOIN orders o ON o.id = i.order_id
+     LEFT JOIN teams t ON t.id = o.team_id
+     LEFT JOIN suppliers s ON s.id = i.supplier_id
+     WHERE ${where.join(' AND ')}
+     ORDER BY o.id DESC, i.id`, params);
+  let data = rows.map((r) => ({ ...r, line_status: normalizeLineStatus(r.progress) }));
+  if (line_status) data = data.filter((r) => r.line_status === line_status);
+  // Đếm theo từng nhóm trạng thái (trước khi lọc) để hiển thị số trên tab.
+  const counts = {};
+  for (const r of rows) { const c = normalizeLineStatus(r.progress); counts[c] = (counts[c] || 0) + 1; }
+  res.json({ data, counts, total: rows.length });
+}));
+
 // GET one + items + lịch sử
 router.get('/:id', wrap(async (req, res) => {
   const rows = await query(
@@ -231,6 +263,79 @@ router.patch('/:id/status', wrap(async (req, res) => {
 
 router.get('/:id/history', wrap(async (req, res) => {
   res.json({ data: await query('SELECT * FROM order_status_history WHERE order_id = ? ORDER BY id', [req.params.id]) });
+}));
+
+const fmtVnd = (n) => new Intl.NumberFormat('vi-VN').format(Number(n || 0)) + '₫';
+
+// Buyer/Admin GỬI BÁO GIÁ để Requester xác nhận -> đơn sang "Chờ xác nhận báo giá" + tạo tác vụ (notification).
+router.post('/:id/send-quote', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
+  const [ord] = await query(
+    'SELECT id, order_code, status, requester_email, project_name, total_amount FROM orders WHERE id = ? AND deleted_at IS NULL',
+    [req.params.id]
+  );
+  if (!ord) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+  if (!ord.requester_email) return res.status(400).json({ error: 'Đơn chưa có email người yêu cầu để gửi xác nhận' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('UPDATE orders SET status = ? WHERE id = ?', ['pending_confirmation', ord.id]);
+    await logStatus(conn, ord.id, ord.status, 'pending_confirmation', req.user.email, req.body?.note || 'Gửi báo giá chờ Requester xác nhận');
+    await createNotification({
+      recipient_email: ord.requester_email,
+      type: 'quote_confirm',
+      title: `Báo giá cần xác nhận — ${ord.order_code}`,
+      body: `${ord.project_name || 'Đơn hàng'} • Tổng tạm tính ${fmtVnd(ord.total_amount)}. Vui lòng xác nhận hoặc từ chối.`,
+      order_id: ord.id,
+      link: `/orders/${ord.id}`,
+      requires_action: true,
+      created_by: req.user.email,
+    }, conn);
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+}));
+
+// Requester (hoặc admin thay mặt) XÁC NHẬN / TỪ CHỐI báo giá.
+router.post('/:id/quote-response', wrap(async (req, res) => {
+  const { decision, note } = req.body || {};
+  if (!['confirm', 'reject'].includes(decision)) return res.status(400).json({ error: 'decision phải là confirm hoặc reject' });
+  const [ord] = await query('SELECT id, order_code, status, requester_email FROM orders WHERE id = ? AND deleted_at IS NULL', [req.params.id]);
+  if (!ord) return res.status(404).json({ error: 'Không tìm thấy đơn' });
+  const isOwner = ord.requester_email && ord.requester_email === req.user.email;
+  if (!(req.user.role === 'admin' || isOwner)) return res.status(403).json({ error: 'Chỉ người yêu cầu mới được xác nhận báo giá' });
+  if (ord.status !== 'pending_confirmation') return res.status(400).json({ error: 'Đơn không ở trạng thái Chờ xác nhận báo giá' });
+  const newStatus = decision === 'confirm' ? 'confirmed' : 'in_progress';
+  // Ai đã gửi báo giá (để báo lại kết quả) — lấy từ tác vụ đang chờ.
+  const [pending] = await query(
+    "SELECT created_by FROM notifications WHERE order_id = ? AND type = 'quote_confirm' AND action_status = 'pending' ORDER BY id DESC LIMIT 1",
+    [ord.id]
+  );
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('UPDATE orders SET status = ? WHERE id = ?', [newStatus, ord.id]);
+    const label = decision === 'confirm' ? 'Xác nhận báo giá' : 'Từ chối báo giá';
+    await logStatus(conn, ord.id, ord.status, newStatus, req.user.email, note ? `${label} — ${note}` : label);
+    // Đóng tác vụ chờ xác nhận.
+    await conn.query(
+      "UPDATE notifications SET action_status = ?, action_note = ?, resolved_at = NOW(), is_read = 1, read_at = COALESCE(read_at, NOW()) WHERE order_id = ? AND type = 'quote_confirm' AND action_status = 'pending'",
+      [decision === 'confirm' ? 'confirmed' : 'rejected', note || null, ord.id]
+    );
+    // Báo lại cho người gửi báo giá.
+    if (pending?.created_by) {
+      await createNotification({
+        recipient_email: pending.created_by,
+        type: 'quote_result',
+        title: `${decision === 'confirm' ? '✅ Đã xác nhận' : '❌ Bị từ chối'} báo giá — ${ord.order_code}`,
+        body: note ? `Ghi chú: ${note}` : (decision === 'confirm' ? 'Requester đã xác nhận, có thể đặt hàng.' : 'Requester từ chối, đơn quay lại Đang xử lý.'),
+        order_id: ord.id,
+        link: `/orders/${ord.id}`,
+        created_by: req.user.email,
+      }, conn);
+    }
+    await conn.commit();
+    res.json({ ok: true, status: newStatus });
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
 }));
 
 // Xóa TOÀN BỘ đơn hàng (soft delete) — chỉ admin/PM. PM chỉ xóa trong phạm vi team mình.
