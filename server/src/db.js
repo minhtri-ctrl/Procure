@@ -82,9 +82,44 @@ async function ensureAdmin() {
   console.log(`[db] Đã tạo admin mặc định: ${config.admin.email} / ${config.admin.password}`);
 }
 
+// Migration idempotent: thêm cột cho DB đã deploy (bỏ qua nếu cột đã tồn tại).
+const MIGRATIONS = [
+  "ALTER TABLE orders ADD COLUMN po_no VARCHAR(100) NULL",
+  "ALTER TABLE orders ADD COLUMN po_date DATETIME NULL",
+  "ALTER TABLE orders ADD COLUMN po_status VARCHAR(64) NULL",
+  "ALTER TABLE inventory_moves ADD COLUMN so_pr VARCHAR(100) NULL",
+  "ALTER TABLE inventory_moves ADD COLUMN pm VARCHAR(190) NULL",
+  "ALTER TABLE inventory_moves ADD COLUMN qdnb_tbkm VARCHAR(190) NULL",
+  "ALTER TABLE inventory_moves ADD COLUMN ticket_xk VARCHAR(190) NULL",
+  "ALTER TABLE warehouse_stock ADD COLUMN so_pr VARCHAR(100) NULL",
+  "ALTER TABLE warehouse_stock ADD COLUMN pm VARCHAR(190) NULL",
+  "ALTER TABLE contracts ADD COLUMN subtotal DECIMAL(18,2) NULL",
+  "ALTER TABLE contracts ADD COLUMN vat_amount DECIMAL(18,2) NULL",
+  "ALTER TABLE contracts ADD COLUMN payment_method VARCHAR(190) NULL",
+  "ALTER TABLE contracts ADD COLUMN our_signer VARCHAR(190) NULL",
+  "ALTER TABLE contracts ADD COLUMN vendor_signer VARCHAR(190) NULL",
+  "ALTER TABLE contracts ADD COLUMN document_html LONGTEXT NULL",
+  "ALTER TABLE email_logs ADD COLUMN cc_list VARCHAR(500) NULL",
+  "ALTER TABLE email_logs ADD COLUMN body_html LONGTEXT NULL",
+  "ALTER TABLE email_logs ADD COLUMN po_no VARCHAR(100) NULL",
+];
+
+async function runMigrations() {
+  for (const sql of MIGRATIONS) {
+    try {
+      await pool.query(sql);
+    } catch (e) {
+      // ER_DUP_FIELDNAME (1060): cột đã tồn tại -> bỏ qua.
+      if (e.code === 'ER_DUP_FIELDNAME' || e.errno === 1060) continue;
+      console.error('[db] migration lỗi:', e.code, e.sqlMessage || e.message);
+    }
+  }
+}
+
 export async function initDb() {
   await waitForDb();
   await runSqlFile('schema.sql');
+  await runMigrations();
   // Seed chỉ khi bảng orders trống, để không đè dữ liệu thật.
   const [{ c }] = await query('SELECT COUNT(*) AS c FROM orders');
   if (c === 0) {

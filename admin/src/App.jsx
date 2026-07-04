@@ -8,6 +8,9 @@ import Requests from './pages/Requests.jsx';
 import Products from './pages/Products.jsx';
 import CrudPage from './pages/CrudPage.jsx';
 import Users from './pages/Users.jsx';
+import Warehouse from './pages/Warehouse.jsx';
+import Emails from './pages/Emails.jsx';
+import Contracts from './pages/Contracts.jsx';
 
 const NAV = [
   { section: 'Tổng quan' },
@@ -16,6 +19,9 @@ const NAV = [
   { to: '/orders', label: '📦 Đơn hàng' },
   { to: '/requests', label: '📝 Yêu cầu mua' },
   { to: '/products', label: '🛒 Danh mục SP' },
+  { to: '/warehouse', label: '🏬 Kho hàng' },
+  { to: '/contracts', label: '📄 Hợp đồng' },
+  { to: '/emails', label: '✉️ Email' },
   { section: 'Danh mục' },
   { to: '/suppliers', label: '🏢 Nhà cung cấp' },
   { to: '/teams', label: '👥 Team' },
@@ -70,6 +76,9 @@ export default function App() {
         <Route path="/orders/:id" element={<OrderDetail />} />
         <Route path="/requests" element={<Requests />} />
         <Route path="/products" element={<Products />} />
+        <Route path="/warehouse" element={<Warehouse />} />
+        <Route path="/contracts" element={<Contracts />} />
+        <Route path="/emails" element={<Emails />} />
         <Route path="/suppliers" element={<CrudPage
           title="Nhà cung cấp" endpoint="/suppliers" canWrite={canWrite}
           columns={[

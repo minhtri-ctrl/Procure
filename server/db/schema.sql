@@ -135,6 +135,9 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_term     VARCHAR(190) NULL,           -- THOI_HAN_TT
   total_amount     DECIMAL(18,2) NOT NULL DEFAULT 0, -- tổng TONG_TIEN các dòng
   warehouse_status VARCHAR(100) NULL,           -- NHAP_KHO
+  po_no            VARCHAR(100) NULL,           -- PO_NO (sinh khi gửi xác nhận NCC)
+  po_date          DATETIME NULL,               -- PO_DATE
+  po_status        VARCHAR(64) NULL,            -- PO_STATUS (vd "Đã gửi NCC")
   note             TEXT NULL,                    -- GHI_CHU
   created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -231,7 +234,13 @@ CREATE TABLE IF NOT EXISTS contracts (
   contract_no   VARCHAR(100) NULL,              -- SO_HOP_DONG
   type          ENUM('DDH','HD') NOT NULL DEFAULT 'DDH', -- đơn đặt hàng / hợp đồng dịch vụ
   file_url      VARCHAR(1000) NULL,             -- link file (Drive/khác)
-  amount        DECIMAL(18,2) NULL,
+  amount        DECIMAL(18,2) NULL,             -- tổng sau thuế
+  subtotal      DECIMAL(18,2) NULL,             -- tổng trước thuế
+  vat_amount    DECIMAL(18,2) NULL,             -- tiền thuế
+  payment_method VARCHAR(190) NULL,             -- HINH_THUC_TT
+  our_signer    VARCHAR(190) NULL,              -- DAI_DIEN_CTY_KY
+  vendor_signer VARCHAR(190) NULL,              -- người đại diện NCC
+  document_html LONGTEXT NULL,                  -- văn bản hợp đồng (thay Google Docs)
   sign_date     DATE NULL,                      -- NGAY_KY_HD
   status        VARCHAR(64) NULL,
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -254,6 +263,9 @@ CREATE TABLE IF NOT EXISTS email_logs (
   email_type  VARCHAR(100) NULL,               -- Loại email (CONFIRM/HANDOVER/SURVEY...)
   status      VARCHAR(100) NULL,               -- Trạng thái
   note        VARCHAR(500) NULL,               -- Ghi chú
+  cc_list     VARCHAR(500) NULL,               -- danh sách CC
+  body_html   LONGTEXT NULL,                   -- nội dung email đã soạn
+  po_no       VARCHAR(100) NULL,               -- số PO (email xác nhận NCC)
   thread_id   VARCHAR(190) NULL,               -- Gmail thread id
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -299,6 +311,8 @@ CREATE TABLE IF NOT EXISTS warehouse_stock (
   total_value   DECIMAL(18,2) NOT NULL DEFAULT 0, -- TONG_TIEN
   bin           VARCHAR(100) NULL,             -- BIN
   supplier_id   BIGINT UNSIGNED NULL,          -- NCC
+  so_pr         VARCHAR(100) NULL,             -- SO_PR
+  pm            VARCHAR(190) NULL,             -- PM
   image_url     VARCHAR(1000) NULL,
   updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -326,6 +340,10 @@ CREATE TABLE IF NOT EXISTS inventory_moves (
   team_id       BIGINT UNSIGNED NULL,
   supplier_id   BIGINT UNSIGNED NULL,
   bin           VARCHAR(100) NULL,
+  so_pr         VARCHAR(100) NULL,             -- SO_PR
+  pm            VARCHAR(190) NULL,             -- PM
+  qdnb_tbkm     VARCHAR(190) NULL,             -- QDNB_TBKM (PNK)
+  ticket_xk     VARCHAR(190) NULL,            -- TICKET_XK (PXK)
   note          VARCHAR(500) NULL,
   image_url     VARCHAR(1000) NULL,
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

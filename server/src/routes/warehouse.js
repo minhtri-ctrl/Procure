@@ -1,0 +1,217 @@
+import { Router } from 'express';
+import { query, pool } from '../db.js';
+import { authRequired, requireRole } from '../middleware/auth.js';
+import { wrap } from '../util.js';
+
+const router = Router();
+router.use(authRequired);
+
+const WH_ROLES = ['admin', 'purchasing', 'warehouse'];
+
+// Chuẩn hoá VAT: nhập 10 -> 0.1; nhập 0.1 giữ nguyên.
+function normVat(v) {
+  let x = Number(v || 0);
+  if (x > 1) x /= 100;
+  return x;
+}
+const num = (v) => Number(v || 0);
+
+// Sinh số chứng từ PNK/PXK-YYMM-NNNN. Nếu >= ngày 25 thì tính sang tháng sau (bám code gốc).
+async function nextVoucherNo(type) {
+  const d = new Date();
+  let yy = d.getFullYear() % 100;
+  let m = d.getMonth() + 1;
+  if (d.getDate() >= 25) { m += 1; if (m > 12) { m = 1; yy = (yy + 1) % 100; } }
+  const prefix = `${type}-${String(yy).padStart(2, '0')}${String(m).padStart(2, '0')}-`;
+  const rows = await query('SELECT voucher_no FROM inventory_moves WHERE voucher_no LIKE ?', [prefix + '%']);
+  const re = new RegExp('^' + prefix.replace(/-/g, '\\-') + '(\\d{4})$');
+  let max = 0;
+  for (const r of rows) { const mm = re.exec(r.voucher_no || ''); if (mm) max = Math.max(max, parseInt(mm[1], 10)); }
+  return prefix + String(max + 1).padStart(4, '0');
+}
+
+async function stockOf(exec, sku, warehouse) {
+  const [rows] = await exec.query(
+    "SELECT COALESCE(SUM(qty_in - qty_out),0) AS s FROM inventory_moves WHERE sku = ? AND COALESCE(warehouse,'') = ?",
+    [sku, warehouse || '']
+  );
+  return num(rows[0]?.s);
+}
+
+// Dựng lại HANG_TON (warehouse_stock) từ toàn bộ XNT (inventory_moves).
+async function rebuildStock(exec) {
+  const [moves] = await exec.query('SELECT * FROM inventory_moves ORDER BY id');
+  const agg = new Map();
+  for (const r of moves) {
+    const key = `${r.warehouse || ''}|${r.sku || ''}`;
+    let it = agg.get(key);
+    if (!it) { it = { sku: r.sku, warehouse: r.warehouse, qin: 0, qout: 0, last: {} }; agg.set(key, it); }
+    it.qin += num(r.qty_in);
+    it.qout += num(r.qty_out);
+    it.last = r; // dòng cuối (id lớn nhất do ORDER BY id)
+  }
+  await exec.query('DELETE FROM warehouse_stock');
+  for (const it of agg.values()) {
+    const onHand = it.qin - it.qout;
+    const price = num(it.last.unit_price);
+    const vat = num(it.last.vat_rate);
+    const totalValue = Math.round(onHand * price * (1 + vat));
+    await exec.query(
+      `INSERT INTO warehouse_stock
+        (sku, warehouse, team_id, item_name, unit, qty_in, qty_out, qty_on_hand, unit_price, vat_rate, total_value, bin, supplier_id, so_pr, pm, image_url)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [it.sku, it.warehouse, it.last.team_id || null, it.last.item_name, it.last.unit, it.qin, it.qout, onHand,
+        price, vat, totalValue, it.last.bin, it.last.supplier_id || null, it.last.so_pr, it.last.pm, it.last.image_url]
+    );
+  }
+}
+
+// ---- Tồn kho (HANG_TON) ----
+router.get('/stock', wrap(async (req, res) => {
+  const { q, warehouse } = req.query;
+  const where = [];
+  const params = [];
+  if (q) { where.push('(s.sku LIKE ? OR s.item_name LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
+  if (warehouse) { where.push('s.warehouse = ?'); params.push(warehouse); }
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const rows = await query(
+    `SELECT s.*, t.name AS team_name, sup.name AS supplier_name
+     FROM warehouse_stock s LEFT JOIN teams t ON t.id=s.team_id LEFT JOIN suppliers sup ON sup.id=s.supplier_id
+     ${whereSql} ORDER BY s.sku`, params);
+  res.json({ data: rows });
+}));
+
+// ---- Sổ Xuất-Nhập-Tồn (XNT) ----
+router.get('/moves', wrap(async (req, res) => {
+  const { q, sku, type, limit = 200 } = req.query;
+  const lim = Math.min(Number(limit) || 200, 500);
+  const where = [];
+  const params = [];
+  if (q) { where.push('(voucher_no LIKE ? OR sku LIKE ? OR item_name LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+  if (sku) { where.push('sku = ?'); params.push(sku); }
+  if (type) { where.push('move_type = ?'); params.push(type); }
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const rows = await query(
+    `SELECT * FROM inventory_moves ${whereSql} ORDER BY move_date DESC, id DESC LIMIT ?`, [...params, lim]);
+  res.json({ data: rows });
+}));
+
+// ---- Danh sách phiếu (gộp theo số CT) ----
+router.get('/vouchers', wrap(async (req, res) => {
+  const { type } = req.query;
+  const where = type ? 'WHERE move_type = ?' : '';
+  const params = type ? [type] : [];
+  const rows = await query(
+    `SELECT voucher_no, move_type, MIN(move_date) AS move_date, MAX(warehouse) AS warehouse,
+            MAX(handler_name) AS handler_name, COUNT(*) AS line_count,
+            SUM(line_total) AS subtotal, SUM(qty_in+qty_out) AS total_qty, MIN(created_at) AS created_at
+     FROM inventory_moves ${where}
+     GROUP BY voucher_no, move_type ORDER BY created_at DESC LIMIT 200`, params);
+  res.json({ data: rows });
+}));
+
+// ---- Danh sách SKU cho form nhập/xuất ----
+router.get('/skus', wrap(async (req, res) => {
+  const type = (req.query.type || 'PNK').toUpperCase();
+  if (type === 'PXK') {
+    const rows = await query(
+      `SELECT sku, item_name AS name, unit, unit_price AS price, vat_rate AS vat, supplier_id, team_id,
+              qty_on_hand AS qtyDefault, pm, image_url, bin, warehouse
+       FROM warehouse_stock WHERE qty_on_hand > 0 ORDER BY sku`);
+    return res.json({ data: rows });
+  }
+  const rows = await query(
+    `SELECT sku, name, unit, default_price AS price, vat_rate AS vat, supplier_id, image_url
+     FROM products WHERE is_active = 1 ORDER BY sku`);
+  res.json({ data: rows });
+}));
+
+router.get('/stock-of', wrap(async (req, res) => {
+  const s = await stockOf(pool, req.query.sku, req.query.warehouse || null);
+  res.json({ sku: req.query.sku, warehouse: req.query.warehouse || null, on_hand: s });
+}));
+
+// ---- Ghi phiếu nhập (PNK) / xuất (PXK) ----
+router.post('/vouchers', requireRole(...WH_ROLES), wrap(async (req, res) => {
+  const b = req.body || {};
+  const type = (b.type || '').toUpperCase();
+  if (type !== 'PNK' && type !== 'PXK') return res.status(400).json({ error: 'type phải là PNK hoặc PXK' });
+  const lines = Array.isArray(b.lines) ? b.lines.filter((l) => l.sku && num(l.qty) > 0) : [];
+  if (!lines.length) return res.status(400).json({ error: 'Cần ít nhất 1 dòng hàng' });
+  const warehouse = b.warehouse || '';
+  const moveDate = b.move_date || new Date().toISOString().slice(0, 10);
+
+  // Xuất kho: kiểm tra đủ tồn (bám code gốc: "Không đủ tồn").
+  if (type === 'PXK') {
+    for (const l of lines) {
+      const cur = await stockOf(pool, l.sku, warehouse);
+      if (cur - num(l.qty) < 0) {
+        return res.status(400).json({ error: `Không đủ tồn • ${l.sku} • còn: ${cur}, yêu cầu: ${num(l.qty)}` });
+      }
+    }
+  }
+
+  const voucherNo = await nextVoucherNo(type);
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const balances = {};
+    for (const l of lines) {
+      const qty = num(l.qty);
+      const price = num(l.price);
+      const vat = normVat(l.vat);
+      const inQ = type === 'PNK' ? qty : 0;
+      const outQ = type === 'PXK' ? qty : 0;
+      const key = `${warehouse}|${l.sku}`;
+      if (!(key in balances)) balances[key] = await stockOf(conn, l.sku, warehouse);
+      balances[key] += inQ - outQ;
+      const lineTotal = qty * price;
+      await conn.query(
+        `INSERT INTO inventory_moves
+          (move_date, voucher_no, move_type, warehouse, handler_name, handler_email, sku, item_name, unit,
+           qty_in, qty_out, unit_price, line_total, vat_rate, running_balance, team_id, supplier_id, bin,
+           so_pr, pm, qdnb_tbkm, ticket_xk, note, image_url)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [moveDate, voucherNo, type, warehouse, b.handler_name || req.user.name, b.handler_email || req.user.email,
+          l.sku, l.item_name || l.name || '', l.unit || '', inQ, outQ, price, lineTotal, vat, balances[key],
+          l.team_id || null, l.supplier_id || null, l.bin || '', l.so_pr || '', l.pm || '',
+          type === 'PNK' ? (l.qdnb || '') : (b.pxk_qdnb || ''),
+          type === 'PXK' ? (b.pxk_ticket || '') : '', l.note || b.note || '', l.image_url || '']
+      );
+    }
+    await rebuildStock(conn);
+    await conn.commit();
+    res.status(201).json({ ok: true, voucher_no: voucherNo, lines: lines.length });
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}));
+
+// ---- Dựng lại toàn bộ TON + HANG_TON từ PNK/PXK ----
+router.post('/rebuild', requireRole('admin', 'warehouse'), wrap(async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    // Tính lại TON lũy kế theo (kho, sku) theo thứ tự ngày/số CT/id.
+    const [moves] = await conn.query('SELECT id, warehouse, sku, qty_in, qty_out FROM inventory_moves ORDER BY move_date, voucher_no, id');
+    const ton = {};
+    for (const r of moves) {
+      const key = `${r.warehouse || ''}|${r.sku || ''}`;
+      ton[key] = (ton[key] || 0) + num(r.qty_in) - num(r.qty_out);
+      await conn.query('UPDATE inventory_moves SET running_balance = ? WHERE id = ?', [ton[key], r.id]);
+    }
+    await rebuildStock(conn);
+    await conn.commit();
+    res.json({ ok: true, moves: moves.length });
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}));
+
+export default router;

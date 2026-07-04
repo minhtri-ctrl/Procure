@@ -98,3 +98,9 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; c
 .error { color: var(--red); font-size: 13px; margin: 8px 0; }
 .muted { color: var(--muted); }
 .center-msg { padding: 60px; text-align: center; color: var(--muted); }
+td.r, th.r, .r { text-align: right; }
+td.c, th.c, .c { text-align: center; }
+.tabs { display: flex; gap: 8px; }
+.email-preview { border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: #fff; margin-top: 12px; }
+.email-meta { font-size: 13px; color: #45505f; margin-bottom: 10px; }
+.email-meta b { color: var(--text); }
