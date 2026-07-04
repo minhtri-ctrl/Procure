@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, fmtVND } from '../api.js';
-import { STATUS_LABEL } from './Orders.jsx';
+import StatusBadge from '../components/StatusBadge.jsx';
 
 function Stat({ label, value }) {
   return <div className="card stat"><div className="label">{label}</div><div className="value">{value}</div></div>;
@@ -31,7 +31,7 @@ export default function Dashboard() {
             <h3 style={{ marginTop: 0 }}>Đơn theo trạng thái</h3>
             {d.by_status.map((s) => (
               <div key={s.status} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
-                <span className={`badge b-${s.status}`}>{STATUS_LABEL[s.status] || s.status}</span>
+                <StatusBadge code={s.status} />
                 <strong>{s.count}</strong>
               </div>
             ))}
@@ -62,7 +62,7 @@ export default function Dashboard() {
                     <td><strong>{o.order_code}</strong></td>
                     <td>{o.project_name}</td>
                     <td>{o.supplier_name || '-'}</td>
-                    <td><span className={`badge b-${o.status}`}>{STATUS_LABEL[o.status] || o.status}</span></td>
+                    <td><StatusBadge code={o.status} /></td>
                     <td>{fmtVND(o.total_amount)}</td>
                   </tr>
                 ))}

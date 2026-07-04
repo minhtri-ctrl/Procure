@@ -9,6 +9,7 @@ const router = Router();
 const TARGET = {
   product: { table: 'products', col: 'image_url' },
   'order-item': { table: 'order_items', col: 'image_url' },
+  'order-quote': { table: 'order_items', col: 'quotation_url' }, // FILE_BG (báo giá)
 };
 
 // GET ảnh (công khai để <img src> tải được).

@@ -396,6 +396,37 @@ CREATE TABLE IF NOT EXISTS attachments (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
+-- 16. WORKFLOW STATES  (tiến trình đơn hàng — admin cấu hình được)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS workflow_states (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  code        VARCHAR(50) NOT NULL,            -- mã trạng thái (dùng trong orders.status)
+  name        VARCHAR(120) NOT NULL,           -- tên hiển thị
+  color       VARCHAR(20) NOT NULL DEFAULT '#64748b', -- màu badge
+  sort_order  INT NOT NULL DEFAULT 0,
+  actor       VARCHAR(30) NULL,                -- vai trò phụ trách bước này (buyer/requester/warehouse…)
+  is_terminal TINYINT(1) NOT NULL DEFAULT 0,   -- trạng thái kết thúc (hoàn tất/huỷ)
+  is_active   TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_wf_code (code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- 17. ORDER STATUS HISTORY  (nhật ký chuyển tiến trình)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS order_status_history (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  order_id    BIGINT UNSIGNED NOT NULL,
+  from_status VARCHAR(50) NULL,
+  to_status   VARCHAR(50) NOT NULL,
+  changed_by  VARCHAR(190) NULL,
+  note        VARCHAR(500) NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_osh_order (order_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
 -- Foreign keys "mềm" (thêm sau khi bảng đã tồn tại; bỏ qua nếu dữ liệu chưa khớp)
 -- ---------------------------------------------------------------------
 ALTER TABLE users        ADD CONSTRAINT fk_users_team     FOREIGN KEY (team_id)     REFERENCES teams(id)      ON DELETE SET NULL;

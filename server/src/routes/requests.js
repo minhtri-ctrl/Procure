@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { query, pool } from '../db.js';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap, pick } from '../util.js';
+import { nextOrderCode } from '../lib/codes.js';
 
 const router = Router();
 router.use(authRequired);
@@ -116,16 +117,14 @@ router.post('/:id/convert', requireRole('admin', 'purchasing'), wrap(async (req,
   const [r] = await query('SELECT * FROM purchase_requests WHERE id = ?', [req.params.id]);
   if (!r) return res.status(404).json({ error: 'Không tìm thấy yêu cầu' });
   const items = await query('SELECT * FROM request_items WHERE request_id = ?', [req.params.id]);
-  const d = new Date();
-  const ym = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}`;
-  const [{ n }] = await query('SELECT COUNT(*) AS n FROM orders WHERE order_code LIKE ?', [`DH-${ym}-%`]);
-  const orderCode = `DH-${ym}-${String(n + 1).padStart(4, '0')}`;
+  const [tm] = r.team_id ? await query('SELECT code FROM teams WHERE id = ?', [r.team_id]) : [null];
+  const orderCode = await nextOrderCode(tm?.code || '');
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     await conn.query(
       `INSERT INTO orders (order_code, requester_email, requester_name, team_id, project_name, request_date, expected_date, receiving_point, status, note)
-       VALUES (?,?,?,?,?,?,?,?, 'draft', ?)`,
+       VALUES (?,?,?,?,?,?,?,?, 'new', ?)`,
       [orderCode, r.requester_email, r.requester_name, r.team_id, r.project_name, r.request_date, r.expected_date, r.receiving_point, r.note]
     );
     const [[{ id: orderId }]] = await conn.query('SELECT LAST_INSERT_ID() AS id');

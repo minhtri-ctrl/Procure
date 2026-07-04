@@ -1,9 +1,13 @@
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './auth.jsx';
+import { MetaProvider } from './meta.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Orders from './pages/Orders.jsx';
 import OrderDetail from './pages/OrderDetail.jsx';
+import CreateOrder from './pages/CreateOrder.jsx';
+import WorkflowConfig from './pages/WorkflowConfig.jsx';
+import Appearance from './pages/Appearance.jsx';
 import Requests from './pages/Requests.jsx';
 import Products from './pages/Products.jsx';
 import CrudPage from './pages/CrudPage.jsx';
@@ -30,6 +34,8 @@ const NAV = [
   { to: '/categories', label: '🏷️ Loại hàng' },
   { section: 'Hệ thống', roles: ['admin'] },
   { to: '/users', label: '🔑 Người dùng', roles: ['admin'] },
+  { to: '/admin/workflow', label: '🔀 Cấu hình Workflow', roles: ['admin'] },
+  { to: '/admin/appearance', label: '🎨 Giao diện', roles: ['admin'] },
 ];
 
 function Layout({ children }) {
@@ -71,10 +77,12 @@ export default function App() {
 
   const canWrite = ['admin', 'purchasing'].includes(user.role);
   return (
+    <MetaProvider>
     <Layout>
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/orders" element={<Orders />} />
+        <Route path="/orders/new" element={<CreateOrder />} />
         <Route path="/orders/:id" element={<OrderDetail />} />
         <Route path="/requests" element={<Requests />} />
         <Route path="/products" element={<Products />} />
@@ -128,8 +136,11 @@ export default function App() {
           ]}
         />} />
         <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/" />} />
+        <Route path="/admin/workflow" element={user.role === 'admin' ? <WorkflowConfig /> : <Navigate to="/" />} />
+        <Route path="/admin/appearance" element={user.role === 'admin' ? <Appearance /> : <Navigate to="/" />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>
+    </MetaProvider>
   );
 }

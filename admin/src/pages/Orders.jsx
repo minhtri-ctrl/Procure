@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, fmtVND, fmtDate } from '../api.js';
-
-export const STATUS_LABEL = {
-  draft: 'Nháp', waiting: 'Chờ xử lý', in_progress: 'Đang xử lý', quoted: 'Đã báo giá',
-  ordered: 'Đã đặt hàng', received: 'Đã nhận', paid: 'Đã thanh toán', completed: 'Hoàn tất', cancelled: 'Đã huỷ',
-};
-const STATUS_LIST = Object.keys(STATUS_LABEL);
+import { useMeta } from '../meta.jsx';
+import { useAuth } from '../auth.jsx';
+import StatusBadge from '../components/StatusBadge.jsx';
 
 export default function Orders() {
+  const { states } = useMeta();
+  const { user } = useAuth();
+  const canWrite = ['admin', 'purchasing'].includes(user.role);
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
@@ -22,13 +22,16 @@ export default function Orders() {
 
   return (
     <>
-      <div className="topbar"><h1>Đơn hàng</h1></div>
+      <div className="topbar">
+        <h1>Đơn hàng</h1>
+        {canWrite && <button className="btn-primary" onClick={() => nav('/orders/new')}>+ Tạo đơn mới</button>}
+      </div>
       <div className="content">
         <div className="toolbar">
           <input className="search" placeholder="Tìm mã đơn / dự án…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <select style={{ width: 180 }} value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select style={{ width: 200 }} value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Tất cả trạng thái</option>
-            {STATUS_LIST.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+            {states.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
           </select>
         </div>
         {err && <div className="error">{err}</div>}
@@ -47,7 +50,7 @@ export default function Orders() {
                   <td>{fmtDate(o.request_date)}</td>
                   <td>{o.item_count}</td>
                   <td>{fmtVND(o.total_amount)}</td>
-                  <td><span className={`badge b-${o.status}`}>{STATUS_LABEL[o.status] || o.status}</span></td>
+                  <td><StatusBadge code={o.status} /></td>
                 </tr>
               ))}
               {!rows.length && <tr><td colSpan={8} className="center-msg">Không có đơn hàng</td></tr>}

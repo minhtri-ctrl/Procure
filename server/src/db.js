@@ -102,6 +102,18 @@ const MIGRATIONS = [
   "ALTER TABLE email_logs ADD COLUMN cc_list VARCHAR(500) NULL",
   "ALTER TABLE email_logs ADD COLUMN body_html LONGTEXT NULL",
   "ALTER TABLE email_logs ADD COLUMN po_no VARCHAR(100) NULL",
+  // Nâng cấp workflow + đầy đủ trường tạo đơn
+  "ALTER TABLE orders MODIFY status VARCHAR(50) NOT NULL DEFAULT 'new'",
+  "ALTER TABLE orders ADD COLUMN hang_muc VARCHAR(190) NULL",
+  "ALTER TABLE order_items ADD COLUMN supplier_id BIGINT UNSIGNED NULL",
+  "ALTER TABLE order_items ADD COLUMN master_contract VARCHAR(190) NULL",
+  "ALTER TABLE order_items ADD COLUMN so_pr VARCHAR(100) NULL",
+  "ALTER TABLE order_items ADD COLUMN design_link VARCHAR(1000) NULL",
+  "ALTER TABLE order_items ADD COLUMN thanh_tien DECIMAL(18,2) NULL",
+  "ALTER TABLE order_items ADD COLUMN tien_thue DECIMAL(18,2) NULL",
+  "ALTER TABLE order_items ADD COLUMN loai_hh VARCHAR(190) NULL",
+  "ALTER TABLE order_items ADD COLUMN rental_start DATE NULL",
+  "ALTER TABLE order_items ADD COLUMN rental_end DATE NULL",
 ];
 
 async function runMigrations() {
@@ -116,6 +128,45 @@ async function runMigrations() {
   }
 }
 
+// Tiến trình mặc định — bám flow: tạo đơn -> buyer xử lý -> báo giá -> requester xác nhận
+// -> đặt hàng vendor -> nhận hàng -> nhập kho -> đủ chứng từ -> thanh toán -> hoàn tất.
+const DEFAULT_WORKFLOW = [
+  ['new', 'Mới', '#64748b', 10, 'buyer', 0],
+  ['in_progress', 'Đang xử lý', '#2563eb', 20, 'buyer', 0],
+  ['quoted', 'Đã báo giá', '#7c3aed', 30, 'buyer', 0],
+  ['confirmed', 'Requester xác nhận', '#0891b2', 40, 'requester', 0],
+  ['ordered', 'Đã đặt hàng NCC', '#d97706', 50, 'buyer', 0],
+  ['received', 'Đã nhận hàng', '#0d9488', 60, 'buyer', 0],
+  ['warehoused', 'Đã nhập kho', '#16a34a', 70, 'warehouse', 0],
+  ['documented', 'Đủ chứng từ', '#4338ca', 80, 'buyer', 0],
+  ['paid', 'Đã thanh toán', '#15803d', 90, 'buyer', 0],
+  ['completed', 'Hoàn tất', '#166534', 100, 'buyer', 1],
+  ['rejected', 'Từ chối', '#b91c1c', 110, 'requester', 1],
+  ['cancelled', 'Đã huỷ', '#991b1b', 120, 'buyer', 1],
+];
+
+async function ensureWorkflow() {
+  const [{ c }] = await query('SELECT COUNT(*) AS c FROM workflow_states');
+  if (c > 0) return;
+  for (const [code, name, color, sort, actor, term] of DEFAULT_WORKFLOW) {
+    await query('INSERT INTO workflow_states (code, name, color, sort_order, actor, is_terminal) VALUES (?,?,?,?,?,?)',
+      [code, name, color, sort, actor, term]);
+  }
+  console.log('[db] Đã tạo workflow mặc định.');
+}
+
+// Theme mặc định (CSS variables) — admin chỉnh trong trang Giao diện.
+const DEFAULT_THEME = {
+  primary: '#ff5722', sidebar: '#16202e', bg: '#f4f6fb', accent: '#2563eb', radius: '10px',
+};
+
+async function ensureTheme() {
+  const rows = await query('SELECT value FROM settings WHERE `key` = ?', ['ui_theme']);
+  if (rows.length) return;
+  await query('INSERT INTO settings (`key`, value, description) VALUES (?,?,?)',
+    ['ui_theme', JSON.stringify(DEFAULT_THEME), 'Cấu hình màu giao diện']);
+}
+
 export async function initDb() {
   await waitForDb();
   await runSqlFile('schema.sql');
@@ -127,5 +178,7 @@ export async function initDb() {
     await runSqlFile('seed.sql', { ignoreErrors: true });
   }
   await ensureAdmin();
+  await ensureWorkflow();
+  await ensureTheme();
   console.log('[db] Khởi tạo database hoàn tất.');
 }
