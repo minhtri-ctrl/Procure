@@ -92,6 +92,12 @@ Lưu ý quan trọng về nền tảng Demo System (buildpack, KHÔNG dùng Dock
 
 ## Phạm vi hiện tại
 
-Đã hoàn thiện: nền tảng DB đầy đủ (17 bảng), auth/phân quyền, dashboard, 2 module lõi **Đơn hàng** & **Yêu cầu mua** + danh mục sản phẩm/NCC/team/loại hàng, quản lý người dùng.
+Đã hoàn thiện: nền tảng DB đầy đủ (17 bảng), auth/phân quyền, dashboard, danh mục sản phẩm/NCC/team/loại hàng, quản lý người dùng và các module nghiệp vụ:
 
-Chưa port (giai đoạn sau): gửi email tự động, kho (nhập/xuất/tồn UI), hợp đồng từ template, trợ lý AI, upload ảnh sản phẩm.
+- **Đơn hàng** — CRUD + dòng hàng + đổi trạng thái.
+- **Yêu cầu mua** — CRUD + duyệt + chuyển YC → đơn hàng.
+- **Kho hàng** — phiếu nhập (PNK) / xuất (PXK) đánh số `PNK/PXK-YYMM-NNNN` (mốc ngày 25), kiểm tra đủ tồn khi xuất, sổ Xuất–Nhập–Tồn với TON lũy kế, dựng lại tồn kho (HANG_TON). Bám `warehouse_addon.js`.
+- **Email** — 4 loại (Xác nhận NCC, Bàn giao, Khảo sát, Thông báo nhập kho) với tiêu đề/nội dung tiếng Việt, sinh số PO `PO-{NCC}-{YYYY}-{seq}`, ghi **LỊCH SỬ GỬI ĐƠN**, thu thập & tính điểm **đánh giá** trung bình. Bám `MainMerged.js`. *(Nền tảng demo không có SMTP nên "gửi" = ghi nhận lịch sử + soạn sẵn nội dung.)*
+- **Hợp đồng** — tự chọn **DDH/HĐ** theo hợp đồng khung của NCC, sinh **văn bản hợp đồng HTML** (thay Google Docs) kèm bảng hàng, tổng tiền và **đọc số thành chữ**, auto-create cho đơn ≥ 20 triệu. Bám `procureCreateContractFromTemplate` + `ProcureOS_Automation.js`.
+
+Chưa port (giai đoạn sau): trợ lý AI, upload ảnh sản phẩm, gửi email SMTP thật, in phiếu kho PDF.
