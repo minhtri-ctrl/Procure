@@ -8,6 +8,7 @@ import OrderDetail from './pages/OrderDetail.jsx';
 import CreateOrder from './pages/CreateOrder.jsx';
 import WorkflowConfig from './pages/WorkflowConfig.jsx';
 import Appearance from './pages/Appearance.jsx';
+import ImportData from './pages/ImportData.jsx';
 import Requests from './pages/Requests.jsx';
 import Products from './pages/Products.jsx';
 import CrudPage from './pages/CrudPage.jsx';
@@ -17,23 +18,26 @@ import Emails from './pages/Emails.jsx';
 import Contracts from './pages/Contracts.jsx';
 import AIAssistant from './pages/AIAssistant.jsx';
 
+const ALL = ['admin', 'purchasing', 'warehouse', 'requester', 'pm'];
+const OPS = ['admin', 'purchasing']; // buyer/admin thao tác
 const NAV = [
-  { section: 'Tổng quan' },
-  { to: '/', label: '📊 Dashboard', end: true },
-  { section: 'Nghiệp vụ' },
-  { to: '/orders', label: '📦 Đơn hàng' },
-  { to: '/requests', label: '📝 Yêu cầu mua' },
-  { to: '/products', label: '🛒 Danh mục SP' },
-  { to: '/warehouse', label: '🏬 Kho hàng' },
-  { to: '/contracts', label: '📄 Hợp đồng' },
-  { to: '/emails', label: '✉️ Email' },
-  { to: '/ai', label: '🤖 Trợ lý AI' },
-  { section: 'Danh mục' },
-  { to: '/suppliers', label: '🏢 Nhà cung cấp' },
-  { to: '/teams', label: '👥 Team' },
-  { to: '/categories', label: '🏷️ Loại hàng' },
+  { section: 'Tổng quan', roles: OPS },
+  { to: '/', label: '📊 Dashboard', end: true, roles: OPS },
+  { section: 'Nghiệp vụ', roles: ALL },
+  { to: '/orders', label: '📦 Đơn hàng', roles: ['admin', 'purchasing', 'pm', 'requester'] },
+  { to: '/requests', label: '📝 Yêu cầu mua', roles: ['admin', 'purchasing', 'pm', 'requester'] },
+  { to: '/products', label: '🛒 Danh mục SP', roles: OPS },
+  { to: '/warehouse', label: '🏬 Kho hàng', roles: ['admin', 'purchasing', 'warehouse'] },
+  { to: '/contracts', label: '📄 Hợp đồng', roles: OPS },
+  { to: '/emails', label: '✉️ Email', roles: OPS },
+  { to: '/ai', label: '🤖 Trợ lý AI', roles: OPS },
+  { section: 'Danh mục', roles: OPS },
+  { to: '/suppliers', label: '🏢 Nhà cung cấp', roles: OPS },
+  { to: '/teams', label: '👥 Team', roles: OPS },
+  { to: '/categories', label: '🏷️ Loại hàng', roles: OPS },
   { section: 'Hệ thống', roles: ['admin'] },
   { to: '/users', label: '🔑 Người dùng', roles: ['admin'] },
+  { to: '/admin/import', label: '⬆️ Nhập dữ liệu', roles: ['admin'] },
   { to: '/admin/workflow', label: '🔀 Cấu hình Workflow', roles: ['admin'] },
   { to: '/admin/appearance', label: '🎨 Giao diện', roles: ['admin'] },
 ];
@@ -80,7 +84,7 @@ export default function App() {
     <MetaProvider>
     <Layout>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={['admin', 'purchasing'].includes(user.role) ? <Dashboard /> : <Navigate to="/orders" replace />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/orders/new" element={<CreateOrder />} />
         <Route path="/orders/:id" element={<OrderDetail />} />
@@ -136,6 +140,7 @@ export default function App() {
           ]}
         />} />
         <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/" />} />
+        <Route path="/admin/import" element={user.role === 'admin' ? <ImportData /> : <Navigate to="/" />} />
         <Route path="/admin/workflow" element={user.role === 'admin' ? <WorkflowConfig /> : <Navigate to="/" />} />
         <Route path="/admin/appearance" element={user.role === 'admin' ? <Appearance /> : <Navigate to="/" />} />
         <Route path="*" element={<Navigate to="/" />} />

@@ -18,9 +18,15 @@ export function AuthProvider({ children }) {
     setUser(user);
     return user;
   };
+  const register = async (email, password, full_name) => {
+    const { token, user } = await api.post('/auth/register', { email, password, full_name });
+    setToken(token);
+    setUser(user);
+    return user;
+  };
   const logout = () => { setToken(null); setUser(null); };
 
-  return <AuthCtx.Provider value={{ user, loading, login, logout }}>{children}</AuthCtx.Provider>;
+  return <AuthCtx.Provider value={{ user, loading, login, register, logout }}>{children}</AuthCtx.Provider>;
 }
 
 export const useAuth = () => useContext(AuthCtx);

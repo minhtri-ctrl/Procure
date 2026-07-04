@@ -1,17 +1,29 @@
 import { Router } from 'express';
+import XLSX from 'xlsx';
 import { query, pool } from '../db.js';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap, pick } from '../util.js';
-import { nextOrderCode, nextItemCode } from '../lib/codes.js';
+import { nextOrderCode } from '../lib/codes.js';
 
 const router = Router();
 router.use(authRequired);
 
+// Giới hạn dữ liệu theo vai trò: requester -> email của mình; pm -> team của mình.
+function scopeClause(user, alias = 'o') {
+  if (user.role === 'requester') return { sql: `${alias}.requester_email = ?`, params: [user.email] };
+  if (user.role === 'pm') return { sql: `${alias}.team_id = ?`, params: [user.team_id || 0] };
+  return null;
+}
+
 const HEADER_FIELDS = [
   'order_code', 'requester_email', 'requester_name', 'team_id', 'supplier_id', 'project_name',
-  'pm', 'status', 'status_raw', 'hang_muc', 'request_date', 'expected_date', 'actual_date', 'handover_date',
-  'receiving_point', 'pr_no', 'contract_no', 'payment_method', 'payment_term', 'warehouse_status', 'note',
+  'pm', 'status', 'status_raw', 'hang_muc', 'qdnb_tbkm', 'request_date', 'expected_date', 'actual_date', 'handover_date',
+  'receiving_point', 'pr_no', 'contract_no', 'payment_method', 'payment_term', 'warehouse_status', 'note', 'custom_fields',
 ];
+function normHeader(h) {
+  if (h.custom_fields && typeof h.custom_fields === 'object') h.custom_fields = JSON.stringify(h.custom_fields);
+  return h;
+}
 const ITEM_FIELDS = [
   'product_id', 'category_id', 'loai_hh', 'item_name', 'item_code', 'description', 'unit', 'quantity',
   'unit_price', 'vat_rate', 'discount_rate', 'image_url', 'quotation_url', 'design_link', 'reason_choose',
@@ -49,8 +61,8 @@ router.get('/', wrap(async (req, res) => {
   const off = (Math.max(Number(page) || 1, 1) - 1) * lim;
   const where = [];
   const params = [];
-  // Requester chỉ thấy đơn của mình.
-  if (req.user.role === 'requester') { where.push('o.requester_email = ?'); params.push(req.user.email); }
+  const sc = scopeClause(req.user);
+  if (sc) { where.push(sc.sql); params.push(...sc.params); }
   if (q) { where.push('(o.order_code LIKE ? OR o.project_name LIKE ? OR o.requester_name LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   if (status) { where.push('o.status = ?'); params.push(status); }
   if (team_id) { where.push('o.team_id = ?'); params.push(team_id); }
@@ -70,6 +82,44 @@ router.get('/', wrap(async (req, res) => {
   res.json({ data: rows, total, page: Number(page), limit: lim });
 }));
 
+// EXPORT CSV/Excel dữ liệu mua hàng (phẳng theo dòng hàng).
+router.get('/export', wrap(async (req, res) => {
+  const format = (req.query.format || 'xlsx').toLowerCase();
+  const where = [];
+  const params = [];
+  const sc = scopeClause(req.user);
+  if (sc) { where.push(sc.sql); params.push(...sc.params); }
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const rows = await query(
+    `SELECT o.order_code, o.request_date, o.expected_date, t.name AS team, o.requester_name, o.requester_email,
+            o.project_name, o.hang_muc, o.receiving_point, o.qdnb_tbkm, o.po_no, o.status_raw,
+            i.loai_hh, i.item_code, i.item_name, i.description, i.quantity, i.unit, i.unit_price, i.vat_rate,
+            i.tien_thue, i.thanh_tien, i.line_total, i.so_pr, i.master_contract, s.name AS ncc, i.nhap_kho, i.progress
+     FROM orders o LEFT JOIN order_items i ON i.order_id=o.id LEFT JOIN teams t ON t.id=o.team_id LEFT JOIN suppliers s ON s.id=i.supplier_id
+     ${whereSql} ORDER BY o.id DESC, i.id`, params);
+  const data = rows.map((r) => ({
+    'Mã đơn': r.order_code, 'Ngày YC': r.request_date || '', 'Ngày nhận': r.expected_date || '', 'Team': r.team || '',
+    'Người YC': r.requester_name || '', 'Email': r.requester_email || '', 'Dự án': r.project_name || '', 'Hạng mục': r.hang_muc || '',
+    'Điểm nhận': r.receiving_point || '', 'QĐNB': r.qdnb_tbkm || '', 'PO': r.po_no || '', 'Tiến trình': r.status_raw || '',
+    'Loại HH': r.loai_hh || '', 'Mã hàng': r.item_code || '', 'Tên hàng': r.item_name || '', 'Mô tả': r.description || '',
+    'SL': Number(r.quantity || 0), 'ĐVT': r.unit || '', 'Đơn giá': Number(r.unit_price || 0), 'VAT%': Math.round(Number(r.vat_rate || 0) * 100),
+    'Tiền thuế': Number(r.tien_thue || 0), 'Thành tiền': Number(r.thanh_tien || 0), 'Tổng': Number(r.line_total || 0),
+    'Số PR': r.so_pr || '', 'Master Contract': r.master_contract || '', 'NCC': r.ncc || '', 'Nhập kho': r.nhap_kho || '',
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  if (format === 'csv') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="procureos-orders.csv"');
+    return res.send('﻿' + XLSX.utils.sheet_to_csv(ws)); // BOM để Excel đọc UTF-8
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'DonHang');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="procureos-orders.xlsx"');
+  res.send(buf);
+}));
+
 // GET one + items + lịch sử
 router.get('/:id', wrap(async (req, res) => {
   const rows = await query(
@@ -81,7 +131,9 @@ router.get('/:id', wrap(async (req, res) => {
     `SELECT i.*, s.name AS supplier_name FROM order_items i LEFT JOIN suppliers s ON s.id=i.supplier_id
      WHERE i.order_id = ? ORDER BY i.id`, [req.params.id]);
   const history = await query('SELECT * FROM order_status_history WHERE order_id = ? ORDER BY id', [req.params.id]);
-  res.json({ ...rows[0], items, history });
+  let custom = {};
+  try { custom = rows[0].custom_fields ? JSON.parse(rows[0].custom_fields) : {}; } catch { custom = {}; }
+  res.json({ ...rows[0], custom_fields: custom, items, history });
 }));
 
 // CREATE order + items (transaction) — sinh MA_DH & MA_HANG chuẩn.
@@ -91,6 +143,7 @@ router.post('/', wrap(async (req, res) => {
   header.requester_email = header.requester_email || req.user.email;
   header.requester_name = header.requester_name || req.user.name;
   header.status = header.status || 'new';
+  normHeader(header);
   const teamCode = await teamCodeOf(header.team_id);
   if (!header.order_code) header.order_code = await nextOrderCode(teamCode);
 
@@ -107,7 +160,7 @@ router.post('/', wrap(async (req, res) => {
     for (const raw of items) {
       const it = pick(raw, ITEM_FIELDS);
       if (!it.item_name) continue;
-      if (!it.item_code) it.item_code = await nextItemCode(teamCode, it.loai_hh);
+      // Mã hàng (MA_HANG) sinh khi đẩy sang danh mục SP, không sinh lúc tạo đơn.
       Object.assign(it, computeLine(it));
       total += it.line_total;
       const ic = Object.keys(it);
@@ -130,7 +183,7 @@ router.post('/', wrap(async (req, res) => {
 
 // UPDATE header
 router.put('/:id', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
-  const header = pick(req.body, HEADER_FIELDS.filter((f) => f !== 'status')); // status đổi qua endpoint riêng
+  const header = normHeader(pick(req.body, HEADER_FIELDS.filter((f) => f !== 'status'))); // status đổi qua endpoint riêng
   if (Object.keys(header).length) {
     const clause = Object.keys(header).map((k) => `\`${k}\` = ?`).join(', ');
     await query(`UPDATE orders SET ${clause} WHERE id = ?`, [...Object.values(header), req.params.id]);
@@ -178,8 +231,6 @@ router.delete('/:id', requireRole('admin', 'purchasing'), wrap(async (req, res) 
 // --- Line items (buyer nhập giá/NCC/BG…) ---
 router.post('/:id/items', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
   const it = pick(req.body, ITEM_FIELDS);
-  const [o] = await query('SELECT team_id FROM orders WHERE id = ?', [req.params.id]);
-  if (!it.item_code) it.item_code = await nextItemCode(await teamCodeOf(o?.team_id), it.loai_hh);
   Object.assign(it, computeLine(it));
   const ic = Object.keys(it);
   const r = await query(
@@ -187,7 +238,7 @@ router.post('/:id/items', requireRole('admin', 'purchasing'), wrap(async (req, r
     [req.params.id, ...ic.map((c) => it[c])]
   );
   await recalcTotal(req.params.id);
-  res.status(201).json({ id: r.insertId, item_code: it.item_code });
+  res.status(201).json({ id: r.insertId });
 }));
 
 router.put('/items/:itemId', requireRole('admin', 'purchasing'), wrap(async (req, res) => {

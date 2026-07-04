@@ -114,6 +114,21 @@ const MIGRATIONS = [
   "ALTER TABLE order_items ADD COLUMN loai_hh VARCHAR(190) NULL",
   "ALTER TABLE order_items ADD COLUMN rental_start DATE NULL",
   "ALTER TABLE order_items ADD COLUMN rental_end DATE NULL",
+  // Đợt 2 (v2): vai trò PM, custom fields, QĐNB, thông tin NCC mở rộng, aliases loại hàng
+  "ALTER TABLE users MODIFY role ENUM('admin','purchasing','warehouse','requester','pm') NOT NULL DEFAULT 'requester'",
+  "ALTER TABLE orders ADD COLUMN qdnb_tbkm VARCHAR(190) NULL",
+  "ALTER TABLE orders ADD COLUMN custom_fields LONGTEXT NULL",
+  "ALTER TABLE order_items ADD COLUMN qdnb_tbkm VARCHAR(190) NULL",
+  "ALTER TABLE order_items ADD COLUMN nhap_kho VARCHAR(100) NULL",
+  "ALTER TABLE order_items ADD COLUMN in_catalog TINYINT(1) NOT NULL DEFAULT 0",
+  "ALTER TABLE categories ADD COLUMN aliases TEXT NULL",
+  "ALTER TABLE suppliers ADD COLUMN bank_name VARCHAR(190) NULL",
+  "ALTER TABLE suppliers ADD COLUMN bank_account VARCHAR(100) NULL",
+  "ALTER TABLE suppliers ADD COLUMN bank_branch VARCHAR(190) NULL",
+  "ALTER TABLE suppliers ADD COLUMN rep_title VARCHAR(190) NULL",
+  "ALTER TABLE suppliers ADD COLUMN delivery_person VARCHAR(190) NULL",
+  "ALTER TABLE suppliers ADD COLUMN delivery_phone VARCHAR(64) NULL",
+  "ALTER TABLE suppliers ADD COLUMN delivery_email VARCHAR(190) NULL",
 ];
 
 async function runMigrations() {

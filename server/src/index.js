@@ -19,6 +19,7 @@ import uploadsRoutes from './routes/uploads.js';
 import aiRoutes from './routes/ai.js';
 import workflowRoutes from './routes/workflow.js';
 import settingsRoutes from './routes/settings.js';
+import importRoutes from './routes/import.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -61,6 +62,7 @@ app.use('/api/uploads', uploadsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/workflow', workflowRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/import', importRoutes);
 
 // Phục vụ admin build (SPA) từ server/webui.
 // File entry được lưu dưới dạng spa.tpl (KHÔNG phải .html) để deploy runner của

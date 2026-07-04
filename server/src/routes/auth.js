@@ -10,7 +10,9 @@ const router = Router();
 router.post('/login', wrap(async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'Thiếu email hoặc mật khẩu' });
-  const rows = await query('SELECT * FROM users WHERE email = ? AND is_active = 1', [email.toLowerCase().trim()]);
+  const em = email.toLowerCase().trim();
+  if (!em.endsWith('@' + config.allowedDomain)) return res.status(403).json({ error: `Chỉ chấp nhận email @${config.allowedDomain}` });
+  const rows = await query('SELECT * FROM users WHERE email = ? AND is_active = 1', [em]);
   const user = rows[0];
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: 'Sai email hoặc mật khẩu' });

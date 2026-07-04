@@ -14,6 +14,8 @@ export default function OrderDetail() {
   const { states } = useMeta();
   const [o, setO] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [editHdr, setEditHdr] = useState(false);
   const [editing, setEditing] = useState(null);
   const [newStatus, setNewStatus] = useState('');
   const [note, setNote] = useState('');
@@ -22,7 +24,7 @@ export default function OrderDetail() {
   const canWrite = ['admin', 'purchasing'].includes(user.role);
 
   const load = () => api.get(`/orders/${id}`).then((d) => { setO(d); setNewStatus(d.status); }).catch((e) => setErr(e.message));
-  useEffect(() => { load(); api.get('/suppliers?limit=500').then((r) => setSuppliers(r.data)); }, [id]);
+  useEffect(() => { load(); api.get('/suppliers?limit=500').then((r) => setSuppliers(r.data)); api.get('/teams?limit=200').then((r) => setTeams(r.data)); }, [id]);
 
   const changeStatus = async () => {
     setErr(''); setMsg('');
@@ -45,6 +47,7 @@ export default function OrderDetail() {
         <h1>Đơn {o.order_code} <StatusBadge code={o.status} /></h1>
         <div>
           <button onClick={() => nav('/orders')}>← Quay lại</button>{' '}
+          {canWrite && <button onClick={() => setEditHdr(true)}>✏️ Sửa đơn</button>}{' '}
           {canWrite && <button className="btn-danger" onClick={del}>Xoá</button>}
         </div>
       </div>
@@ -63,7 +66,9 @@ export default function OrderDetail() {
             <Info label="Ngày YC" value={fmtDate(o.request_date)} />
             <Info label="Ngày nhận" value={fmtDate(o.expected_date)} />
             <Info label="PM" value={o.pm} />
+            <Info label="Số QĐNB" value={o.qdnb_tbkm} />
             <Info label="Tổng giá trị" value={fmtVND(o.total_amount)} />
+            {Object.entries(o.custom_fields || {}).map(([k, v]) => <Info key={k} label={k} value={String(v)} />)}
           </div>
 
           <div className="card">
@@ -132,7 +137,69 @@ export default function OrderDetail() {
       </div>
 
       {editing && <LineEdit item={editing} suppliers={suppliers} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+      {editHdr && <EditOrder order={o} teams={teams} suppliers={suppliers} onClose={() => setEditHdr(false)} onSaved={() => { setEditHdr(false); load(); }} />}
     </>
+  );
+}
+
+// Sửa thông tin đơn (header) + trường tùy chỉnh (thêm/bớt tự do).
+function EditOrder({ order, teams, suppliers, onClose, onSaved }) {
+  const [f, setF] = useState({
+    project_name: order.project_name || '', receiving_point: order.receiving_point || '', hang_muc: order.hang_muc || '',
+    qdnb_tbkm: order.qdnb_tbkm || '', pm: order.pm || '', team_id: order.team_id || '', supplier_id: order.supplier_id || '',
+    request_date: (order.request_date || '').slice(0, 10), expected_date: (order.expected_date || '').slice(0, 10),
+    payment_method: order.payment_method || '', payment_term: order.payment_term || '', note: order.note || '',
+  });
+  const [cf, setCf] = useState(Object.entries(order.custom_fields || {}).map(([k, v]) => ({ k, v })));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const set = (k, v) => setF({ ...f, [k]: v });
+
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      const custom = {};
+      cf.forEach((r) => { if (r.k.trim()) custom[r.k.trim()] = r.v; });
+      await api.put(`/orders/${order.id}`, { ...f, team_id: f.team_id || null, supplier_id: f.supplier_id || null, custom_fields: custom });
+      onSaved();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal title={`Sửa đơn ${order.order_code}`} onClose={onClose} onSubmit={save} busy={busy}>
+      <div className="field"><label>Tên dự án</label><input value={f.project_name} onChange={(e) => set('project_name', e.target.value)} /></div>
+      <div className="row">
+        <div className="field"><label>Team</label>
+          <select value={f.team_id} onChange={(e) => set('team_id', e.target.value)}><option value="">--</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+        </div>
+        <div className="field"><label>Hạng mục</label><input value={f.hang_muc} onChange={(e) => set('hang_muc', e.target.value)} /></div>
+      </div>
+      <div className="field"><label>Điểm nhận</label><input value={f.receiving_point} onChange={(e) => set('receiving_point', e.target.value)} /></div>
+      <div className="row">
+        <div className="field"><label>Ngày YC</label><input type="date" value={f.request_date} onChange={(e) => set('request_date', e.target.value)} /></div>
+        <div className="field"><label>Ngày nhận</label><input type="date" value={f.expected_date} onChange={(e) => set('expected_date', e.target.value)} /></div>
+      </div>
+      <div className="row">
+        <div className="field"><label>Số QĐNB</label><input value={f.qdnb_tbkm} onChange={(e) => set('qdnb_tbkm', e.target.value)} /></div>
+        <div className="field"><label>PM</label><input value={f.pm} onChange={(e) => set('pm', e.target.value)} /></div>
+      </div>
+      <div className="row">
+        <div className="field"><label>Hình thức TT</label><input value={f.payment_method} onChange={(e) => set('payment_method', e.target.value)} /></div>
+        <div className="field"><label>Thời hạn TT</label><input value={f.payment_term} onChange={(e) => set('payment_term', e.target.value)} /></div>
+      </div>
+      <div className="field"><label>Ghi chú</label><input value={f.note} onChange={(e) => set('note', e.target.value)} /></div>
+
+      <label>Trường tùy chỉnh (thêm/bớt tự do)</label>
+      {cf.map((r, i) => (
+        <div className="row" key={i} style={{ marginBottom: 6 }}>
+          <input placeholder="Tên trường" value={r.k} onChange={(e) => setCf(cf.map((x, j) => (j === i ? { ...x, k: e.target.value } : x)))} />
+          <input placeholder="Giá trị" value={r.v} onChange={(e) => setCf(cf.map((x, j) => (j === i ? { ...x, v: e.target.value } : x)))} />
+          <button type="button" className="btn-sm btn-danger" onClick={() => setCf(cf.filter((_, j) => j !== i))}>×</button>
+        </div>
+      ))}
+      <button type="button" className="btn-sm" onClick={() => setCf([...cf, { k: '', v: '' }])}>+ Thêm trường</button>
+      {err && <div className="error">{err}</div>}
+    </Modal>
   );
 }
 

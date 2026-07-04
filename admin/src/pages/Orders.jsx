@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, fmtVND, fmtDate } from '../api.js';
+import { api, fmtVND, fmtDate, getToken } from '../api.js';
 import { useMeta } from '../meta.jsx';
 import { useAuth } from '../auth.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -20,11 +20,24 @@ export default function Orders() {
   };
   useEffect(() => { load(); }, [q, status]);
 
+  const download = async (format) => {
+    const res = await fetch(`/api/orders/export?format=${format}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `procureos-orders.${format === 'csv' ? 'csv' : 'xlsx'}`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <div className="topbar">
         <h1>Đơn hàng</h1>
-        {canWrite && <button className="btn-primary" onClick={() => nav('/orders/new')}>+ Tạo đơn mới</button>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => download('xlsx')}>⬇ Excel</button>
+          <button onClick={() => download('csv')}>⬇ CSV</button>
+          {canWrite && <button className="btn-primary" onClick={() => nav('/orders/new')}>+ Tạo đơn mới</button>}
+        </div>
       </div>
       <div className="content">
         <div className="toolbar">

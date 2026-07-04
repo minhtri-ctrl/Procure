@@ -30,14 +30,15 @@ export function abbr2Of(loaiHh) {
 function yy() { return String(new Date().getFullYear()).slice(-2); }
 function yymm() { const d = new Date(); return String(d.getFullYear()).slice(-2) + String(d.getMonth() + 1).padStart(2, '0'); }
 
-// MA_DH: RQ-{TEAM}-{YY}-{NNNN}  (theo team + năm)
+// MA_DH: RQ-{TEAM}-{YY}-{NNNN}  (theo team + năm; số nối tiếp qua CẢ đơn hàng lẫn yêu cầu mua)
 export async function nextOrderCode(teamCode) {
   const team = (noAccent(teamCode).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'GEN');
   const prefix = `RQ-${team}-${yy()}-`;
-  const rows = await query('SELECT order_code FROM orders WHERE order_code LIKE ?', [prefix + '%']);
   const re = new RegExp('^' + prefix.replace(/-/g, '\\-') + '(\\d{4})$');
   let max = 0;
-  for (const r of rows) { const m = re.exec(r.order_code || ''); if (m) max = Math.max(max, parseInt(m[1], 10)); }
+  const scan = (rows, field) => { for (const r of rows) { const m = re.exec(r[field] || ''); if (m) max = Math.max(max, parseInt(m[1], 10)); } };
+  scan(await query('SELECT order_code FROM orders WHERE order_code LIKE ?', [prefix + '%']), 'order_code');
+  scan(await query('SELECT request_code FROM purchase_requests WHERE request_code LIKE ?', [prefix + '%']), 'request_code');
   return prefix + String(max + 1).padStart(4, '0');
 }
 

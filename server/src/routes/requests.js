@@ -34,8 +34,9 @@ router.get('/', wrap(async (req, res) => {
   const off = (Math.max(Number(page) || 1, 1) - 1) * lim;
   const where = [];
   const params = [];
-  // requester chỉ thấy YC của chính mình
+  // requester chỉ thấy YC của mình; pm theo team của mình
   if (req.user.role === 'requester') { where.push('r.requester_email = ?'); params.push(req.user.email); }
+  else if (req.user.role === 'pm') { where.push('r.team_id = ?'); params.push(req.user.team_id || 0); }
   if (q) { where.push('(r.request_code LIKE ? OR r.project_name LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
   if (status) { where.push('r.status = ?'); params.push(status); }
   if (team_id) { where.push('r.team_id = ?'); params.push(team_id); }
@@ -66,7 +67,10 @@ router.post('/', wrap(async (req, res) => {
   const items = Array.isArray(req.body.items) ? req.body.items : [];
   header.requester_email = header.requester_email || req.user.email;
   header.requester_name = header.requester_name || req.user.name;
-  if (!header.request_code) header.request_code = await genRequestCode(header.team_id);
+  if (!header.request_code) {
+    const [t] = header.team_id ? await query('SELECT code FROM teams WHERE id = ?', [header.team_id]) : [null];
+    header.request_code = await nextOrderCode(t?.code || '');
+  }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -117,8 +121,9 @@ router.post('/:id/convert', requireRole('admin', 'purchasing'), wrap(async (req,
   const [r] = await query('SELECT * FROM purchase_requests WHERE id = ?', [req.params.id]);
   if (!r) return res.status(404).json({ error: 'Không tìm thấy yêu cầu' });
   const items = await query('SELECT * FROM request_items WHERE request_id = ?', [req.params.id]);
-  const [tm] = r.team_id ? await query('SELECT code FROM teams WHERE id = ?', [r.team_id]) : [null];
-  const orderCode = await nextOrderCode(tm?.code || '');
+  // Giữ NGUYÊN mã yêu cầu làm mã đơn (thống nhất 1 mã, không sinh số mới).
+  const existed = await query('SELECT id FROM orders WHERE order_code = ?', [r.request_code]);
+  const orderCode = existed.length ? r.request_code + '-D' : r.request_code;
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
