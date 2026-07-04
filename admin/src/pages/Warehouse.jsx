@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, fmtVND, fmtDate } from '../api.js';
+import { api, fmtVND, fmtDate, getToken } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import Modal from '../components/Modal.jsx';
 
@@ -22,18 +22,39 @@ export default function Warehouse() {
   useEffect(() => { load(); }, [tab, q]);
 
   const rebuild = async () => { await api.post('/warehouse/rebuild'); setMsg('Đã dựng lại tồn kho'); load(); setTimeout(() => setMsg(''), 3000); };
+  const download = async (format) => {
+    const res = await fetch(`/api/warehouse/export?format=${format}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+    const blob = await res.blob(); const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `procureos-kho.${format === 'csv' ? 'csv' : 'xlsx'}`; a.click(); URL.revokeObjectURL(url);
+  };
+  const onImport = (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = async () => {
+      setErr(''); setMsg('Đang nhập tồn kho…');
+      try { const r = await api.post('/warehouse/import', { fileBase64: String(rd.result).split(',')[1] }); setMsg(`Đã nhập ${r.imported} dòng tồn kho`); load(); }
+      catch (e2) { setErr(e2.message); setMsg(''); }
+    };
+    rd.readAsDataURL(f);
+    e.target.value = '';
+  };
 
   return (
     <>
       <div className="topbar">
         <h1>Kho hàng</h1>
-        {canWrite && (
-          <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => download('xlsx')}>⬇ Excel</button>
+          <button onClick={() => download('csv')}>⬇ CSV</button>
+          {canWrite && <>
+            <label className="btn btn-sm" style={{ cursor: 'pointer' }}>⬆️ Import tồn cũ
+              <input type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={onImport} />
+            </label>
             <button className="btn-primary" onClick={() => setVoucher('PNK')}>+ Nhập kho (PNK)</button>
             <button onClick={() => setVoucher('PXK')}>− Xuất kho (PXK)</button>
             <button onClick={rebuild}>↻ Dựng lại tồn</button>
-          </div>
-        )}
+          </>}
+        </div>
       </div>
       <div className="content">
         <div className="toolbar">

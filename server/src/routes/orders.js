@@ -3,7 +3,7 @@ import XLSX from 'xlsx';
 import { query, pool } from '../db.js';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap, pick } from '../util.js';
-import { nextOrderCode } from '../lib/codes.js';
+import { nextOrderCode, nextItemCode } from '../lib/codes.js';
 
 const router = Router();
 router.use(authRequired);
@@ -257,6 +257,38 @@ router.delete('/items/:itemId', requireRole('admin', 'purchasing'), wrap(async (
   const row = await getItem(req.params.itemId);
   await query('DELETE FROM order_items WHERE id = ?', [req.params.itemId]);
   if (row) await recalcTotal(row.order_id);
+  res.json({ ok: true });
+}));
+
+// Cập nhật tiến trình theo TỪNG dòng hàng.
+router.patch('/items/:itemId/progress', requireRole('admin', 'purchasing', 'warehouse'), wrap(async (req, res) => {
+  await query('UPDATE order_items SET progress = ? WHERE id = ?', [req.body.progress || '', req.params.itemId]);
+  res.json({ ok: true });
+}));
+
+// Đẩy dòng hàng sang Danh mục SP (sinh MA_HANG) -> chờ nhập kho.
+router.post('/items/:itemId/to-catalog', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
+  const it = await getItem(req.params.itemId);
+  if (!it) return res.status(404).json({ error: 'Không tìm thấy dòng hàng' });
+  let code = it.item_code;
+  if (!code) {
+    const [o] = await query('SELECT team_id FROM orders WHERE id = ?', [it.order_id]);
+    code = await nextItemCode(await teamCodeOf(o?.team_id), it.item_name, it.loai_hh);
+  }
+  // upsert vào products
+  await query(
+    `INSERT INTO products (sku, name, unit, default_price, vat_rate, supplier_id, image_url)
+     VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name), default_price=VALUES(default_price), vat_rate=VALUES(vat_rate)`,
+    [code, it.item_name, it.unit, it.unit_price, it.vat_rate, it.supplier_id || null, it.image_url || null]
+  );
+  await query('UPDATE order_items SET item_code = ?, in_catalog = 1, nhap_kho = ?, progress = ? WHERE id = ?',
+    [code, 'Chờ nhập kho', 'Chờ nhập kho', req.params.itemId]);
+  res.json({ ok: true, item_code: code });
+}));
+
+// Bàn giao trực tiếp cho Requester (không nhập kho).
+router.post('/items/:itemId/handover', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
+  await query('UPDATE order_items SET progress = ?, nhap_kho = ? WHERE id = ?', ['Đã bàn giao', 'Đã bàn giao', req.params.itemId]);
   res.json({ ok: true });
 }));
 

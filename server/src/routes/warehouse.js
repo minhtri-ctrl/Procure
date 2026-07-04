@@ -1,10 +1,13 @@
 import { Router } from 'express';
+import XLSX from 'xlsx';
 import { query, pool } from '../db.js';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap } from '../util.js';
 
 const router = Router();
 router.use(authRequired);
+
+const gv = (row, keys) => { for (const k of keys) { if (row[k] !== undefined && row[k] !== '') return row[k]; } return ''; };
 
 const WH_ROLES = ['admin', 'purchasing', 'warehouse'];
 
@@ -214,6 +217,69 @@ router.post('/rebuild', requireRole('admin', 'warehouse'), wrap(async (req, res)
   } finally {
     conn.release();
   }
+}));
+
+// ---- Export báo cáo kho (tồn + giá trị) ----
+router.get('/export', wrap(async (req, res) => {
+  const format = (req.query.format || 'xlsx').toLowerCase();
+  const rows = await query(
+    `SELECT s.sku AS 'Mã hàng', s.item_name AS 'Tên hàng', s.warehouse AS 'Kho', s.unit AS 'ĐVT',
+            s.qty_in AS 'Tổng nhập', s.qty_out AS 'Tổng xuất', s.qty_on_hand AS 'Tồn', s.unit_price AS 'Đơn giá',
+            s.total_value AS 'Giá trị tồn', sup.name AS 'NCC', s.bin AS 'Vị trí'
+     FROM warehouse_stock s LEFT JOIN suppliers sup ON sup.id=s.supplier_id ORDER BY s.sku`);
+  const ws = XLSX.utils.json_to_sheet(rows.map((r) => ({ ...r,
+    'Tổng nhập': Number(r['Tổng nhập'] || 0), 'Tổng xuất': Number(r['Tổng xuất'] || 0), 'Tồn': Number(r['Tồn'] || 0),
+    'Đơn giá': Number(r['Đơn giá'] || 0), 'Giá trị tồn': Number(r['Giá trị tồn'] || 0) })));
+  if (format === 'csv') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="procureos-kho.csv"');
+    return res.send('﻿' + XLSX.utils.sheet_to_csv(ws));
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'TonKho');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="procureos-kho.xlsx"');
+  res.send(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+}));
+
+// ---- Import tồn kho cũ từ Excel (tạo phiếu nhập "OPENING" + dựng lại tồn) ----
+router.post('/import', requireRole('admin', 'warehouse'), wrap(async (req, res) => {
+  const b64 = req.body?.fileBase64;
+  if (!b64) return res.status(400).json({ error: 'Thiếu fileBase64' });
+  const wb = XLSX.read(Buffer.from(b64, 'base64'), { type: 'buffer', cellDates: true });
+  const sheet = wb.Sheets[req.body.sheet] || wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const conn = await pool.getConnection();
+  let cnt = 0;
+  try {
+    await conn.beginTransaction();
+    await conn.query("DELETE FROM inventory_moves WHERE voucher_no LIKE 'OPENING-%'");
+    const d = new Date();
+    const voucher = `OPENING-${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}`;
+    for (const r of rows) {
+      const sku = String(gv(r, ['MHH', 'SKU', 'MA_HANG', 'Mã hàng'])).trim();
+      if (!sku) continue;
+      const qty = num(gv(r, ['SO_LUONG_TON', 'TON', 'SO_LUONG', 'SL', 'Tồn', 'Số lượng']));
+      if (qty <= 0) continue;
+      const price = num(gv(r, ['DON_GIA', 'Đơn giá', 'GIA']));
+      const vat = normVat(gv(r, ['THUE_SUAT', 'VAT', 'VAT_PCT']));
+      const warehouse = String(gv(r, ['KHO', 'Kho', 'WAREHOUSE'])) || 'KHO_1';
+      await conn.query(
+        `INSERT INTO inventory_moves (move_date, voucher_no, move_type, warehouse, sku, item_name, unit, qty_in, qty_out, unit_price, line_total, vat_rate, running_balance, bin, note)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [d.toISOString().slice(0, 10), voucher, 'PNK', warehouse, sku, String(gv(r, ['TEN_HANG', 'Tên hàng', 'TEN'])), String(gv(r, ['DVT', 'ĐVT'])),
+          qty, 0, price, qty * price, vat, qty, String(gv(r, ['BIN', 'Vị trí'])), 'Tồn đầu kỳ (import)']
+      );
+      cnt++;
+    }
+    // dựng lại TON lũy kế + HANG_TON
+    const [moves] = await conn.query('SELECT id, warehouse, sku, qty_in, qty_out FROM inventory_moves ORDER BY move_date, voucher_no, id');
+    const ton = {};
+    for (const m of moves) { const k = `${m.warehouse || ''}|${m.sku || ''}`; ton[k] = (ton[k] || 0) + num(m.qty_in) - num(m.qty_out); await conn.query('UPDATE inventory_moves SET running_balance = ? WHERE id = ?', [ton[k], m.id]); }
+    await rebuildStock(conn);
+    await conn.commit();
+    res.json({ ok: true, imported: cnt });
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
 }));
 
 export default router;

@@ -37,6 +37,12 @@ export default function OrderDetail() {
     catch (e) { setErr(e.message); }
   };
   const del = async () => { if (confirm('Xoá đơn hàng này?')) { await api.del(`/orders/${id}`); nav('/orders'); } };
+  const toCatalog = async (itemId) => {
+    setErr(''); setMsg('');
+    try { const r = await api.post(`/orders/items/${itemId}/to-catalog`); setMsg(`Đã đẩy sang Danh mục SP — mã hàng ${r.item_code}, chờ nhập kho`); load(); }
+    catch (e) { setErr(e.message); }
+  };
+  const handover = async (itemId) => { try { await api.post(`/orders/items/${itemId}/handover`); setMsg('Đã bàn giao trực tiếp'); load(); } catch (e) { setErr(e.message); } };
 
   if (err && !o) return <><div className="topbar"><h1>Chi tiết đơn</h1></div><div className="content"><div className="error">{err}</div></div></>;
   if (!o) return <div className="content center-msg">Đang tải…</div>;
@@ -112,22 +118,26 @@ export default function OrderDetail() {
           <h3 style={{ marginTop: 0 }}>Chi tiết hàng ({o.items.length})</h3>
           <div className="table-wrap" style={{ border: 'none' }}>
             <table>
-              <thead><tr><th>Mã hàng</th><th>Loại</th><th>Tên hàng</th><th>SL</th><th>Đơn giá</th><th>VAT</th><th>Thành tiền</th><th>Tổng</th><th>NCC</th><th>Số PR</th><th>BG</th>{canWrite && <th></th>}</tr></thead>
+              <thead><tr><th>Mã hàng</th><th>Loại</th><th>Tên hàng</th><th>SL</th><th>Đơn giá</th><th>Tổng</th><th>NCC</th><th>BG</th><th>Tiến trình dòng</th>{canWrite && <th>Xử lý</th>}</tr></thead>
               <tbody>
                 {o.items.map((it) => (
                   <tr key={it.id}>
-                    <td>{it.item_code || '-'}</td>
+                    <td>{it.item_code || <span className="muted">chưa có</span>}</td>
                     <td>{it.loai_hh || '-'}</td>
                     <td>{it.item_name}</td>
                     <td className="r">{it.quantity}</td>
                     <td className="r">{fmtVND(it.unit_price)}</td>
-                    <td className="c">{(Number(it.vat_rate) * 100).toFixed(0)}%</td>
-                    <td className="r">{fmtVND(it.thanh_tien ?? it.line_total)}</td>
                     <td className="r"><strong>{fmtVND(it.line_total)}</strong></td>
                     <td>{it.supplier_name || '-'}</td>
-                    <td>{it.so_pr || '-'}</td>
                     <td>{it.quotation_url ? <a href={it.quotation_url} target="_blank" rel="noreferrer">📎</a> : '-'}</td>
-                    {canWrite && <td><button className="btn-sm" onClick={() => setEditing(it)}>Sửa</button></td>}
+                    <td>{it.progress || it.nhap_kho || '-'}</td>
+                    {canWrite && (
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn-sm" onClick={() => setEditing(it)}>Sửa</button>{' '}
+                        {!it.in_catalog && <button className="btn-sm" title="Đẩy sang Danh mục SP → sinh mã hàng, chờ nhập kho" onClick={() => toCatalog(it.id)}>→ Kho</button>}{' '}
+                        <button className="btn-sm" title="Bàn giao trực tiếp cho Requester" onClick={() => handover(it.id)}>Bàn giao</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

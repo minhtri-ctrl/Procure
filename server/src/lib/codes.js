@@ -18,13 +18,30 @@ export const LOAI_HH_ABBR = {
   'Dịch vụ vận chuyển': 'VC', 'Khác': 'KH',
 };
 
-// ABBR2 từ loại hàng: tra bảng, nếu không có -> ghép chữ đầu 2 từ, fallback 'XX'.
+// ABBR2 fallback từ chuỗi: bảng tĩnh -> ghép chữ đầu 2 từ -> 'XX'.
 export function abbr2Of(loaiHh) {
   if (LOAI_HH_ABBR[loaiHh]) return LOAI_HH_ABBR[loaiHh];
   const words = noAccent(loaiHh).toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
   if (!words.length) return 'XX';
   if (words.length === 1) return (words[0] + 'X').slice(0, 2);
   return (words[0][0] + words[1][0]);
+}
+
+// ABBR2 tra từ điển DM_SP (categories.aliases) theo TÊN HÀNG; không khớp -> fallback theo loại hàng.
+export async function abbr2From(itemName, loaiHh) {
+  const target = noAccent(itemName).toUpperCase();
+  if (target) {
+    const cats = await query('SELECT abbr, aliases, name FROM categories WHERE abbr IS NOT NULL AND abbr <> ""');
+    let best = null;
+    for (const c of cats) {
+      const aliases = String(c.aliases || c.name || '').split(/[;,|/]/).map((a) => noAccent(a).toUpperCase().trim()).filter(Boolean);
+      for (const a of aliases) {
+        if (a && target.includes(a)) { if (!best || a.length > best.len) best = { abbr: c.abbr, len: a.length }; }
+      }
+    }
+    if (best) return best.abbr;
+  }
+  return abbr2Of(loaiHh);
 }
 
 function yy() { return String(new Date().getFullYear()).slice(-2); }
@@ -42,10 +59,11 @@ export async function nextOrderCode(teamCode) {
   return prefix + String(max + 1).padStart(4, '0');
 }
 
-// MA_HANG: {TEAM}-{ABBR2}-{YYMM}-{NNNN}
-export async function nextItemCode(teamCode, loaiHh) {
+// MA_HANG: {TEAM}-{ABBR2}-{YYMM}-{NNNN}  (ABBR2 tra từ điển DM_SP theo tên hàng)
+export async function nextItemCode(teamCode, itemName, loaiHh) {
   const team = (noAccent(teamCode).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'GEN');
-  const prefix = `${team}-${abbr2Of(loaiHh)}-${yymm()}-`;
+  const abbr = await abbr2From(itemName, loaiHh);
+  const prefix = `${team}-${abbr}-${yymm()}-`;
   const rows = await query('SELECT item_code FROM order_items WHERE item_code LIKE ?', [prefix + '%']);
   const re = new RegExp('^' + prefix.replace(/-/g, '\\-') + '(\\d{4})$');
   let max = 0;
