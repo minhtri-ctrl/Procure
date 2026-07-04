@@ -3,6 +3,7 @@ import { query } from '../db.js';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap } from '../util.js';
 import { moneyVnd } from '../lib/vn.js';
+import { notifySeaTalk } from '../lib/seatalk.js';
 
 const router = Router();
 router.use(authRequired);
@@ -139,6 +140,8 @@ router.post('/send', requireRole('admin', 'purchasing'), wrap(async (req, res) =
     [order.order_code, def.to === 'supplier' ? order.supplier_name : order.requester_name, to, order.project_name,
       def.logType, 'ĐÃ GỬI', subject, cc, body, poNo]
   );
+  // Thông báo SeaTalk song song (bật bằng webhook trong cấu hình).
+  notifySeaTalk(`[ProcureOS] ${def.label}: đơn ${order.order_code} - ${order.project_name || ''} → ${to}`);
   res.status(201).json({ ok: true, to, cc, subject, po_no: poNo });
 }));
 

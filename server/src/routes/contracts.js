@@ -1,11 +1,16 @@
 import { Router } from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { query } from '../db.js';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap, pick } from '../util.js';
 import { moneyVnd, numToVietnamese } from '../lib/vn.js';
+import { renderContract } from '../lib/docx.js';
 
 const router = Router();
 router.use(authRequired);
+const TPL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'templates');
 
 // Quy tắc auto-create (bám ProcureOS_Automation.js).
 const INVALID_MASTER_CONTRACT = ['', 'Chọn Normal sourcing', 'Normal sourcing', 'N/A', 'n/a'];
@@ -163,6 +168,64 @@ router.get('/:id', wrap(async (req, res) => {
   if (!rows.length) return res.status(404).json({ error: 'Không tìm thấy hợp đồng' });
   const { document_html, ...meta } = rows[0];
   res.json(meta);
+}));
+
+// Lấy buffer mẫu (ưu tiên bản admin upload trong settings, mặc định file trong repo).
+async function templateBuffer(type) {
+  const key = type === 'DDH' ? 'tpl_po' : 'tpl_hd';
+  const rows = await query('SELECT value FROM settings WHERE `key` = ?', [key]);
+  if (rows.length && rows[0].value) return Buffer.from(rows[0].value, 'base64');
+  return fs.readFileSync(path.join(TPL_DIR, type === 'DDH' ? 'po.docx' : 'hd.docx'));
+}
+
+// Dựng dữ liệu điền vào mẫu docx.
+async function buildDocxData(contract) {
+  const [order] = await query('SELECT o.*, t.code AS team_code FROM orders o LEFT JOIN teams t ON t.id=o.team_id WHERE o.id = ?', [contract.order_id]);
+  let sup = null;
+  if (contract.supplier_id) [sup] = await query('SELECT * FROM suppliers WHERE id = ?', [contract.supplier_id]);
+  const items = await query('SELECT * FROM order_items WHERE order_id = ? ORDER BY id', [contract.order_id]);
+  const amount = Number(contract.amount || 0);
+  const p = parsePayment(order?.payment_method, amount);
+  return {
+    VENDOR_NO: order?.po_no || contract.contract_no || order?.order_code || '',
+    TODAY: new Date().toLocaleDateString('vi-VN'),
+    MASTER_CONTRACT_NO: sup?.master_contract || order?.contract_no || '',
+    DAI_DIEN_CTY_KY: contract.our_signer || '', CHUC_VU_DAI_DIEN_CTY: 'Giám đốc',
+    NCC: sup?.name || '', DIA_CHI: sup?.address || '', MA_SO_THUE: sup?.tax_code || '',
+    NGUOI_DAI_DIEN: sup?.representative || sup?.contact_name || '', CHUC_VU_DAI_DIEN_NCC: sup?.rep_title || '',
+    SO_TAI_KHOAN: sup?.bank_account || '', NGAN_HANG: sup?.bank_name || '', CHI_NHANH_NGAN_HANG: sup?.bank_branch || '',
+    TOTAL_THANH_TIEN: moneyVnd(contract.subtotal), TOAL_TIEN_THUE: moneyVnd(contract.vat_amount),
+    TOTAL_TONG_TIEN: moneyVnd(amount), BANG_CHU_TONG_TIEN: numToVietnamese(amount),
+    DEPOSIT_PERCENT: p.depositPercent, DEPOSIT_AMOUNT: moneyVnd(p.depositAmount), DEPOSIT_AMOUNT_IN_WORDS: numToVietnamese(p.depositAmount), DEPOSIT_DUE_DAYS: 14,
+    BALANCE_PERCENT: p.balancePercent, BALANCE_AMOUNT: moneyVnd(p.balanceAmount), BALANCE_AMOUNT_IN_WORDS: numToVietnamese(p.balanceAmount), BALANCE_DUE_DAYS: 30,
+    NGAY_NHAN: order?.expected_date || '', NHAN_SU_PT: sup?.delivery_person || '', EMAIL: sup?.delivery_email || sup?.contact_email || '', DT_NS_PT: sup?.delivery_phone || '',
+    items: items.map((it) => ({
+      TEN_HANG: it.item_name, DVT: it.unit || '', SL: it.quantity, DON_GIA: moneyVnd(it.unit_price),
+      VAT: `${Math.round(Number(it.vat_rate) * 100)}%`, THANH_TIEN: moneyVnd(it.thanh_tien ?? it.line_total),
+    })),
+  };
+}
+
+// Tải hợp đồng .docx (điền từ mẫu của bạn).
+router.get('/:id/docx', wrap(async (req, res) => {
+  const [c] = await query('SELECT * FROM contracts WHERE id = ?', [req.params.id]);
+  if (!c) return res.status(404).json({ error: 'Không tìm thấy hợp đồng' });
+  const buf = renderContract(await templateBuffer(c.type), await buildDocxData(c));
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  res.setHeader('Content-Disposition', `attachment; filename="${c.contract_no || 'hop-dong'}.docx"`);
+  res.send(buf);
+}));
+
+// Upload mẫu .docx (admin) — type=DDH|HD.
+router.post('/template/:type', requireRole('admin'), wrap(async (req, res) => {
+  const type = req.params.type === 'DDH' ? 'DDH' : 'HD';
+  const key = type === 'DDH' ? 'tpl_po' : 'tpl_hd';
+  let data = req.body?.fileBase64 || '';
+  const m = /^data:[^;]+;base64,(.*)$/s.exec(data); if (m) data = m[1];
+  if (!data) return res.status(400).json({ error: 'Thiếu file' });
+  await query('INSERT INTO settings (`key`, value, description) VALUES (?,?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+    [key, data, `Mẫu hợp đồng ${type}`]);
+  res.json({ ok: true });
 }));
 
 // Xem văn bản hợp đồng (HTML)

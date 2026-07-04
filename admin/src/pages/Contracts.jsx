@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, fmtVND, fmtDate, getToken } from '../api.js';
 import { useAuth } from '../auth.jsx';
+// getToken dùng cho tải .docx
 import Modal from '../components/Modal.jsx';
 
 const TYPE_LABEL = { DDH: 'Đơn đặt hàng', HD: 'Hợp đồng DV' };
@@ -32,6 +33,18 @@ export default function Contracts() {
     });
   };
   const del = async (c) => { if (confirm(`Xoá hợp đồng ${c.contract_no}?`)) { await api.del(`/contracts/${c.id}`); load(); } };
+  const downloadDocx = async (c) => {
+    const res = await fetch(`/api/contracts/${c.id}/docx`, { headers: { Authorization: `Bearer ${getToken()}` } });
+    if (!res.ok) { setErr('Không tạo được .docx'); return; }
+    const blob = await res.blob(); const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `${c.contract_no || 'hop-dong'}.docx`; a.click(); URL.revokeObjectURL(url);
+  };
+  const uploadTpl = (type) => (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = async () => { try { await api.post(`/contracts/template/${type}`, { fileBase64: String(rd.result).split(',')[1] }); setMsg(`Đã cập nhật mẫu ${type}`); } catch (e2) { setErr(e2.message); } };
+    rd.readAsDataURL(f); e.target.value = '';
+  };
 
   return (
     <>
@@ -47,6 +60,11 @@ export default function Contracts() {
       <div className="content">
         <div className="toolbar">
           <input className="search" placeholder="Tìm số HĐ / mã đơn / NCC…" value={q} onChange={(e) => setQ(e.target.value)} />
+          {user.role === 'admin' && <>
+            <div className="spacer" />
+            <label className="btn btn-sm" style={{ cursor: 'pointer' }}>Mẫu ĐĐH (PO)<input type="file" accept=".docx" style={{ display: 'none' }} onChange={uploadTpl('DDH')} /></label>
+            <label className="btn btn-sm" style={{ cursor: 'pointer' }}>Mẫu HĐ<input type="file" accept=".docx" style={{ display: 'none' }} onChange={uploadTpl('HD')} /></label>
+          </>}
         </div>
         {err && <div className="error">{err}</div>}
         {msg && <div style={{ color: 'var(--green)', marginBottom: 10 }}>{msg}</div>}
@@ -63,6 +81,7 @@ export default function Contracts() {
                   <td>{c.status || '-'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="btn-sm" onClick={() => viewDoc(c)}>Xem</button>{' '}
+                    <button className="btn-sm" onClick={() => downloadDocx(c)}>⬇ .docx</button>{' '}
                     {canWrite && <button className="btn-sm" onClick={() => setEditing(c)}>Sửa</button>}{' '}
                     {canWrite && <button className="btn-sm btn-danger" onClick={() => del(c)}>Xoá</button>}
                   </td>
