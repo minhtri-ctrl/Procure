@@ -12,7 +12,7 @@ export function crudRouter({ table, fields, searchCols = [], writeRoles = ['admi
   // LIST (có tìm kiếm + phân trang)
   router.get('/', wrap(async (req, res) => {
     const { q, page = 1, limit = 50 } = req.query;
-    const lim = Math.min(Number(limit) || 50, 200);
+    const lim = Math.min(Number(limit) || 50, 5000);
     const off = (Math.max(Number(page) || 1, 1) - 1) * lim;
     const where = [];
     const params = [];

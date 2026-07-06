@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import { refreshSuppliers } from '../components/SupplierSelect.jsx';
 
 export default function ImportData() {
   const [busy, setBusy] = useState(false);
@@ -15,7 +16,7 @@ export default function ImportData() {
     rd.onload = async () => {
       const b64 = String(rd.result).split(',')[1];
       setBusy(true);
-      try { setResult(await api.post('/import', { fileBase64: b64 })); }
+      try { setResult(await api.post('/import', { fileBase64: b64 })); refreshSuppliers(); }
       catch (e2) { setErr(e2.message); } finally { setBusy(false); }
     };
     rd.readAsDataURL(f);

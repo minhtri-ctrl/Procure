@@ -1,6 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api.js';
 import Modal from '../components/Modal.jsx';
+import { refreshSuppliers } from '../components/SupplierSelect.jsx';
+
+// Endpoint dùng chung với SupplierSelect: sau khi CRUD/import NCC ở đây,
+// phải xoá cache module của SupplierSelect để mọi ô chọn NCC khác load lại dữ liệu mới.
+function invalidateSupplierCache(endpoint) {
+  if (endpoint === '/suppliers') refreshSuppliers();
+}
 
 // Trang CRUD dùng chung cho các danh mục đơn giản.
 export default function CrudPage({ title, endpoint, columns, fields, canWrite = true, importEndpoint }) {
@@ -27,12 +34,15 @@ export default function CrudPage({ title, endpoint, columns, fields, canWrite = 
     try {
       if (editing.id) await api.put(`${endpoint}/${editing.id}`, form);
       else await api.post(endpoint, form);
+      invalidateSupplierCache(endpoint);
       setEditing(null); load();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   const remove = async (row) => {
     if (!confirm(`Xoá "${row[columns[0].key]}"?`)) return;
-    await api.del(`${endpoint}/${row.id}`); load();
+    await api.del(`${endpoint}/${row.id}`);
+    invalidateSupplierCache(endpoint);
+    load();
   };
 
   const onImportFile = (e) => {
@@ -43,7 +53,7 @@ export default function CrudPage({ title, endpoint, columns, fields, canWrite = 
     rd.onload = async () => {
       const b64 = String(rd.result).split(',')[1];
       setImportBusy(true);
-      try { setImportResult(await api.post(importEndpoint, { fileBase64: b64 })); load(); }
+      try { setImportResult(await api.post(importEndpoint, { fileBase64: b64 })); invalidateSupplierCache(endpoint); load(); }
       catch (e2) { setImportErr(e2.message); } finally { setImportBusy(false); }
     };
     rd.readAsDataURL(f);
