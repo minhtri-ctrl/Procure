@@ -507,6 +507,14 @@ CREATE TABLE IF NOT EXISTS backup_log (
   KEY idx_backup_log_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Khoá dùng chung giữa mọi instance/replica của app (deploy có thể chạy >1 container cho
+-- cùng 1 project) để chỉ 1 lượt đồng bộ Google Sheets chạy tại một thời điểm.
+CREATE TABLE IF NOT EXISTS backup_lock (
+  id         TINYINT UNSIGNED NOT NULL,
+  locked_at  DATETIME NULL,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------------------------------------------------------------------
 -- Foreign keys "mềm" (thêm sau khi bảng đã tồn tại; bỏ qua nếu dữ liệu chưa khớp)
 -- ---------------------------------------------------------------------

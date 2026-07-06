@@ -252,11 +252,14 @@ const DEFAULT_BACKUP_TABLES = [
 
 async function ensureBackupConfig() {
   const [{ c }] = await query('SELECT COUNT(*) AS c FROM backup_config');
-  if (c > 0) return;
-  for (const t of DEFAULT_BACKUP_TABLES) {
-    await query('INSERT IGNORE INTO backup_config (table_name) VALUES (?)', [t]);
+  if (c === 0) {
+    for (const t of DEFAULT_BACKUP_TABLES) {
+      await query('INSERT IGNORE INTO backup_config (table_name) VALUES (?)', [t]);
+    }
+    console.log(`[db] Đã tạo cấu hình backup mặc định (${DEFAULT_BACKUP_TABLES.length} bảng).`);
   }
-  console.log(`[db] Đã tạo cấu hình backup mặc định (${DEFAULT_BACKUP_TABLES.length} bảng).`);
+  // Dòng khoá dùng chung giữa mọi instance/replica khi chạy đồng bộ backup (id cố định = 1).
+  await query('INSERT IGNORE INTO backup_lock (id, locked_at) VALUES (1, NULL)');
 }
 
 export async function initDb() {

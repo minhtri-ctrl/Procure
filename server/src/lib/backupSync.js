@@ -1,4 +1,4 @@
-import { query } from '../db.js';
+import { query, pool } from '../db.js';
 import { config } from '../config.js';
 import { ensureSheetTab, writeSheetSnapshot, isBackupConfigured, getBackupSpreadsheetId } from './googleSheets.js';
 
@@ -106,26 +106,40 @@ async function syncTable(cfg, spreadsheetId) {
   });
 }
 
-// Khoá đơn giản chống chạy chồng: cron tick (mỗi N phút) và trigger thủ công
-// (POST /api/backup/run) có thể rơi vào cùng thời điểm — nếu chạy đồng thời sẽ đua nhau
-// tạo tab (2 tiến trình cùng thấy tab chưa tồn tại -> addSheet 2 lần -> lỗi "already exists")
-// và nhân đôi số lượt gọi Google Sheets API trong cùng 1 phút -> dễ vượt quota ghi.
-let isRunning = false;
+// Khoá chống chạy chồng — Ở CẤP MySQL, không phải biến RAM: nền tảng deploy có thể chạy
+// nhiều hơn 1 container/replica cho cùng 1 deployment (đã thấy race thật khi test — 2 tiến
+// trình cùng đọc "tab chưa tồn tại" rồi cùng addSheet -> lỗi "already exists" + nhân đôi số
+// lượt gọi Google Sheets API trong 1 phút -> vượt quota ghi). Một biến `let isRunning` trong
+// module chỉ chặn được trong 1 process, không thấy được process khác — nên dùng
+// backup_lock (1 dòng, cột locked_at) làm khoá dùng chung giữa mọi instance qua UPDATE có
+// điều kiện: chỉ 1 UPDATE trúng điều kiện tại một thời điểm nhờ tính atomic của MySQL.
+const LOCK_STALE_MINUTES = 15; // tự nhả khoá nếu 1 lượt chạy bị crash giữa chừng không kịp release
+
+async function acquireLock() {
+  const [result] = await pool.query(
+    `UPDATE backup_lock SET locked_at = NOW()
+     WHERE id = 1 AND (locked_at IS NULL OR locked_at < NOW() - INTERVAL ${LOCK_STALE_MINUTES} MINUTE)`
+  );
+  return result.affectedRows === 1;
+}
+
+async function releaseLock() {
+  await query('UPDATE backup_lock SET locked_at = NULL WHERE id = 1');
+}
 
 // Chạy 1 lượt đồng bộ toàn bộ bảng đang bật trong backup_config.
 // Mỗi bảng độc lập — 1 bảng lỗi không chặn các bảng còn lại.
 export async function runBackupSync() {
-  if (isRunning) {
-    console.log('[backup] Đang có 1 lượt đồng bộ chạy dở — bỏ qua lần gọi này.');
-    return { skipped: true, reason: 'already_running' };
-  }
   if (!(await isBackupConfigured())) {
     console.log(
       '[backup] Chưa cấu hình Google Sheets (thiếu Sheet ID hoặc service account key) — bỏ qua lượt đồng bộ.'
     );
     return { skipped: true };
   }
-  isRunning = true;
+  if (!(await acquireLock())) {
+    console.log('[backup] Instance khác đang chạy đồng bộ (hoặc chạy tay trùng lúc cron) — bỏ qua lần này.');
+    return { skipped: true, reason: 'already_running' };
+  }
   try {
     const spreadsheetId = await getBackupSpreadsheetId();
     const configs = await query('SELECT * FROM backup_config WHERE is_enabled = 1 ORDER BY table_name');
@@ -147,7 +161,7 @@ export async function runBackupSync() {
     }
     return { skipped: false, results };
   } finally {
-    isRunning = false;
+    await releaseLock().catch(() => {});
   }
 }
 
