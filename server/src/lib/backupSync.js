@@ -106,34 +106,49 @@ async function syncTable(cfg, spreadsheetId) {
   });
 }
 
+// Khoá đơn giản chống chạy chồng: cron tick (mỗi N phút) và trigger thủ công
+// (POST /api/backup/run) có thể rơi vào cùng thời điểm — nếu chạy đồng thời sẽ đua nhau
+// tạo tab (2 tiến trình cùng thấy tab chưa tồn tại -> addSheet 2 lần -> lỗi "already exists")
+// và nhân đôi số lượt gọi Google Sheets API trong cùng 1 phút -> dễ vượt quota ghi.
+let isRunning = false;
+
 // Chạy 1 lượt đồng bộ toàn bộ bảng đang bật trong backup_config.
 // Mỗi bảng độc lập — 1 bảng lỗi không chặn các bảng còn lại.
 export async function runBackupSync() {
+  if (isRunning) {
+    console.log('[backup] Đang có 1 lượt đồng bộ chạy dở — bỏ qua lần gọi này.');
+    return { skipped: true, reason: 'already_running' };
+  }
   if (!(await isBackupConfigured())) {
     console.log(
       '[backup] Chưa cấu hình Google Sheets (thiếu Sheet ID hoặc service account key) — bỏ qua lượt đồng bộ.'
     );
     return { skipped: true };
   }
-  const spreadsheetId = await getBackupSpreadsheetId();
-  const configs = await query('SELECT * FROM backup_config WHERE is_enabled = 1 ORDER BY table_name');
-  const results = [];
-  for (const cfg of configs) {
-    try {
-      await syncTable(cfg, spreadsheetId);
-      results.push({ table: cfg.table_name, ok: true });
-    } catch (e) {
-      console.error(`[backup] Lỗi đồng bộ bảng "${cfg.table_name}":`, e.message);
-      await upsertBackupState(cfg.table_name, {
-        last_synced_at: new Date(),
-        last_status: 'error',
-        last_error: String(e.message).slice(0, 1000),
-      }).catch(() => {});
-      await logEvent('sync_error', cfg.table_name, String(e.message).slice(0, 500)).catch(() => {});
-      results.push({ table: cfg.table_name, ok: false, error: e.message });
+  isRunning = true;
+  try {
+    const spreadsheetId = await getBackupSpreadsheetId();
+    const configs = await query('SELECT * FROM backup_config WHERE is_enabled = 1 ORDER BY table_name');
+    const results = [];
+    for (const cfg of configs) {
+      try {
+        await syncTable(cfg, spreadsheetId);
+        results.push({ table: cfg.table_name, ok: true });
+      } catch (e) {
+        console.error(`[backup] Lỗi đồng bộ bảng "${cfg.table_name}":`, e.message);
+        await upsertBackupState(cfg.table_name, {
+          last_synced_at: new Date(),
+          last_status: 'error',
+          last_error: String(e.message).slice(0, 1000),
+        }).catch(() => {});
+        await logEvent('sync_error', cfg.table_name, String(e.message).slice(0, 500)).catch(() => {});
+        results.push({ table: cfg.table_name, ok: false, error: e.message });
+      }
     }
+    return { skipped: false, results };
+  } finally {
+    isRunning = false;
   }
-  return { skipped: false, results };
 }
 
 let intervalHandle = null;
