@@ -134,8 +134,33 @@ router.get('/count', wrap(async (req, res) => {
 
 // LIST tất cả DÒNG HÀNG (mọi đơn, theo scope) — cho màn "Xử lý mặt hàng" của Buyer.
 // Trả line_status (code chuẩn hoá từ order_items.progress) để gom nhóm theo trạng thái.
+const DUE_SOON_RECEIPT_DAYS = 3;
+const DUE_SOON_PAYMENT_DAYS = 7;
+const CONTRACT_REQUIRED_AMOUNT = 20000000;
+
+// Cờ cảnh báo tính theo ĐƠN (dùng chung cho counts và data) — so ngày theo mốc 00:00 hôm nay.
+function computeOrderFlags(o) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const flags = { overdue_receipt: false, due_soon_receipt: false, due_soon_payment: false, missing_contract: false };
+  if (o.expected_date && !o.actual_date) {
+    const exp = new Date(o.expected_date); exp.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((exp - today) / 86400000);
+    if (diffDays < 0) flags.overdue_receipt = true;
+    else if (diffDays <= DUE_SOON_RECEIPT_DAYS) flags.due_soon_receipt = true;
+  }
+  if (o.actual_date) {
+    const due = new Date(o.actual_date); due.setHours(0, 0, 0, 0);
+    due.setDate(due.getDate() + (o.payment_term_days ?? 14));
+    const diffDays = Math.round((due - today) / 86400000);
+    if (diffDays >= 0 && diffDays <= DUE_SOON_PAYMENT_DAYS) flags.due_soon_payment = true;
+  }
+  const hasPoOrContract = !!(o.po_no || o.contract_no) || Number(o.contract_count) > 0;
+  if (Number(o.total_amount) > CONTRACT_REQUIRED_AMOUNT && !hasPoOrContract) flags.missing_contract = true;
+  return flags;
+}
+
 router.get('/items/all', wrap(async (req, res) => {
-  const { q, line_status, team_id, supplier_id } = req.query;
+  const { q, line_status, flag, team_id, supplier_id } = req.query;
   const where = ['o.deleted_at IS NULL'];
   const params = [];
   const sc = scopeClause(req.user);
@@ -146,20 +171,40 @@ router.get('/items/all', wrap(async (req, res) => {
   const rows = await query(
     `SELECT i.id, i.order_id, i.item_name, i.loai_hh, i.unit, i.quantity, i.unit_price, i.line_total,
             i.progress, i.nhap_kho, i.in_catalog, i.item_code,
-            o.order_code, o.project_name, o.status AS order_status, o.requester_name, o.expected_date,
+            o.order_code, o.project_name, o.status AS order_status, o.requester_name,
+            o.expected_date, o.actual_date, o.total_amount, o.po_no, o.contract_no,
+            COALESCE(hs.payment_term_days, 14) AS payment_term_days,
+            (SELECT COUNT(*) FROM contracts c WHERE c.order_id = o.id) AS contract_count,
             t.name AS team_name, s.name AS supplier_name
      FROM order_items i
      JOIN orders o ON o.id = i.order_id
      LEFT JOIN teams t ON t.id = o.team_id
      LEFT JOIN suppliers s ON s.id = i.supplier_id
+     LEFT JOIN suppliers hs ON hs.id = o.supplier_id
      WHERE ${where.join(' AND ')}
      ORDER BY o.id DESC, i.id`, params);
-  let data = rows.map((r) => ({ ...r, line_status: normalizeLineStatus(r.progress) }));
+
+  // Gom cờ cảnh báo + số dòng theo trạng thái theo từng đơn (order_id) — mỗi đơn chỉ tính 1 lần.
+  const orderFlags = new Map();
+  for (const r of rows) {
+    if (!orderFlags.has(r.order_id)) orderFlags.set(r.order_id, computeOrderFlags(r));
+  }
+
+  let data = rows.map((r) => ({ ...r, line_status: normalizeLineStatus(r.progress), flags: orderFlags.get(r.order_id) }));
   if (line_status) data = data.filter((r) => r.line_status === line_status);
-  // Đếm theo từng nhóm trạng thái (trước khi lọc) để hiển thị số trên tab.
+  if (flag) data = data.filter((r) => r.flags[flag]);
+
+  // Đếm theo từng nhóm trạng thái dòng (trước khi lọc) để hiển thị số trên tab.
   const counts = {};
   for (const r of rows) { const c = normalizeLineStatus(r.progress); counts[c] = (counts[c] || 0) + 1; }
-  res.json({ data, counts, total: rows.length });
+
+  // Đếm theo cờ cảnh báo — đếm số ĐƠN (không phải số dòng) khớp mỗi cờ.
+  const flagCounts = { overdue_receipt: 0, due_soon_receipt: 0, due_soon_payment: 0, missing_contract: 0 };
+  for (const f of orderFlags.values()) {
+    for (const k of Object.keys(flagCounts)) if (f[k]) flagCounts[k]++;
+  }
+
+  res.json({ data, counts, flagCounts, total: rows.length });
 }));
 
 // GET one + items + lịch sử
