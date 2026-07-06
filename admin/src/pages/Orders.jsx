@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, fmtVND, fmtDate, getToken } from '../api.js';
+import { api, fmtVND, fmtNum, fmtDate, getToken } from '../api.js';
 import { useMeta } from '../meta.jsx';
 import { useAuth } from '../auth.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -64,7 +64,7 @@ export default function Orders() {
                   <td>{o.team_name || '-'}</td>
                   <td className="truncate" title={o.supplier_name}>{o.supplier_name || '-'}</td>
                   <td>{fmtDate(o.request_date)}</td>
-                  <td>{o.item_count}</td>
+                  <td>{fmtNum(o.item_count)}</td>
                   <td>{fmtVND(o.total_amount)}</td>
                   <td><StatusBadge code={o.status} /></td>
                 </tr>

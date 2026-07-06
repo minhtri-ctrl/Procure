@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, fmtVND, fmtDate, getToken } from '../api.js';
+import { api, fmtVND, fmtNum, fmtDate, getToken } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { useMeta } from '../meta.jsx';
 import { LOAI_HH } from '../constants.js';
@@ -163,7 +163,7 @@ export default function OrderDetail() {
                     <td>{it.item_code || <span className="muted">chưa có</span>}</td>
                     <td>{it.loai_hh || '-'}</td>
                     <td>{it.item_name}</td>
-                    <td className="r">{it.quantity}</td>
+                    <td className="r">{fmtNum(it.quantity)}</td>
                     <td className="r">{fmtVND(it.unit_price)}</td>
                     <td className="r"><strong>{fmtVND(it.line_total)}</strong></td>
                     <td>{it.supplier_name || '-'}</td>

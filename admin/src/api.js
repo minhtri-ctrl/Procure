@@ -37,4 +37,7 @@ export const api = {
 // Định dạng tiền VND
 export const fmtVND = (n) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(n || 0));
+// Định dạng số lượng/đếm kiểu VN (dấu chấm phân cách hàng nghìn), dùng chung cho mọi nơi hiển thị số.
+export const fmtNum = (n) =>
+  new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(Number(n || 0));
 export const fmtDate = (d) => (d ? String(d).slice(0, 10) : '');

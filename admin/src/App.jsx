@@ -28,9 +28,9 @@ const NAV = [
   { section: 'Tổng quan', roles: OPS },
   { to: '/', label: '📊 Dashboard', end: true, roles: OPS },
   { section: 'Nghiệp vụ', roles: ALL },
+  { to: '/requests', label: '📝 Yêu cầu mua', roles: ['admin', 'purchasing', 'pm', 'requester'] },
   { to: '/orders', label: '📦 Đơn hàng', roles: ['admin', 'purchasing', 'pm', 'requester'] },
   { to: '/item-board', label: '🧩 Xử lý mặt hàng', roles: OPS },
-  { to: '/requests', label: '📝 Yêu cầu mua', roles: ['admin', 'purchasing', 'pm', 'requester'] },
   { to: '/products', label: '🛒 Danh mục SP', roles: OPS },
   { to: '/warehouse', label: '🏬 Kho hàng', roles: ['admin', 'purchasing', 'warehouse'] },
   { to: '/contracts', label: '📄 Hợp đồng', roles: OPS },
@@ -60,34 +60,61 @@ function Layout({ children }) {
   }
   const visible = groups.filter((g) => g.items.length);
   const activeTitle = visible.find((g) => g.items.some((i) => i.to === loc.pathname || (i.to !== '/' && loc.pathname.startsWith(i.to))))?.title;
-  const [open, setOpen] = useState(activeTitle || visible[0]?.title);
-  useEffect(() => { if (activeTitle) setOpen(activeTitle); }, [activeTitle]);
+  // Nhiều nhóm có thể mở cùng lúc — dùng Set thay vì 1 giá trị duy nhất (accordion).
+  const [openGroups, setOpenGroups] = useState(() => new Set(visible.map((g) => g.title)));
+  useEffect(() => {
+    if (activeTitle) setOpenGroups((prev) => (prev.has(activeTitle) ? prev : new Set(prev).add(activeTitle)));
+  }, [activeTitle]);
+  const toggleGroup = (title) => setOpenGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(title)) next.delete(title); else next.add(title);
+    return next;
+  });
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === '1');
+  useEffect(() => { localStorage.setItem('sidebar_collapsed', collapsed ? '1' : '0'); }, [collapsed]);
+  const iconOf = (label) => label.split(' ')[0];
 
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <div className="brand">Procure<span>OS</span></div>
+    <div className={`layout${collapsed ? ' sidebar-collapsed' : ''}`}>
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
+        <div className="brand-row">
+          {!collapsed && <div className="brand">Procure<span>OS</span></div>}
+          <button className="sidebar-toggle" onClick={() => setCollapsed((c) => !c)} title={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}>
+            {collapsed ? '»' : '«'}
+          </button>
+        </div>
         <nav>
           {visible.map((g) => (
             <div key={g.title}>
-              <div className={`grp-hd${open === g.title ? ' open' : ''}`} onClick={() => setOpen(open === g.title ? null : g.title)}>
-                <span>{g.title}</span><span className="chev">▶</span>
-              </div>
-              {open === g.title && g.items.map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => (isActive ? 'active' : '')}>
-                  {item.label}
+              {!collapsed && (
+                <div className={`grp-hd${openGroups.has(g.title) ? ' open' : ''}`} onClick={() => toggleGroup(g.title)}>
+                  <span>{g.title}</span><span className="chev">▶</span>
+                </div>
+              )}
+              {(collapsed || openGroups.has(g.title)) && g.items.map((item) => (
+                <NavLink key={item.to} to={item.to} end={item.end} title={item.label} className={({ isActive }) => (isActive ? 'active' : '')}>
+                  {collapsed ? iconOf(item.label) : item.label}
                 </NavLink>
               ))}
             </div>
           ))}
         </nav>
         <div className="user">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>{user.name || user.email}</strong>
-            <NotificationBell />
-          </div>
-          <div className="muted">{user.role}</div>
-          <button className="btn-sm" onClick={logout}>Đăng xuất</button>
+          {!collapsed ? (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong>{user.name || user.email}</strong>
+                <NotificationBell />
+              </div>
+              <div className="muted">{user.role}</div>
+              <button className="btn-sm" onClick={logout}>Đăng xuất</button>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'center' }}><NotificationBell /></div>
+              <button className="btn-sm" onClick={logout} title="Đăng xuất">⎋</button>
+            </>
+          )}
         </div>
       </aside>
       <div className="main">{children}</div>

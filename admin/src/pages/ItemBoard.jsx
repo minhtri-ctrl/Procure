@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { api, fmtVND } from '../api.js';
+import { api, fmtVND, fmtNum } from '../api.js';
 import { LINE_STATUSES, lineStatusOf } from '../lineStatus.js';
 
 // Màn "Xử lý mặt hàng": Buyer xem & cập nhật tiến trình TỪNG dòng hàng của mọi đơn,
@@ -72,7 +72,7 @@ export default function ItemBoard() {
                       </td>
                       <td>{it.item_name}<div className="muted" style={{ fontSize: 12 }}>{it.project_name || ''}</div></td>
                       <td>{it.loai_hh || '-'}</td>
-                      <td className="r">{it.quantity}</td>
+                      <td className="r">{fmtNum(it.quantity)}</td>
                       <td className="r">{fmtVND(it.unit_price)}</td>
                       <td className="r"><strong>{fmtVND(it.line_total)}</strong></td>
                       <td>{it.supplier_name || '-'}</td>
@@ -114,7 +114,7 @@ function Chip({ label, count, color, code, activeCode, onClick }) {
       }}
     >
       <span>{label}</span>
-      <span style={{ background: on ? '#ffffff33' : color + '22', color: on ? '#fff' : color, borderRadius: 10, padding: '1px 8px', fontSize: 12, fontWeight: 600 }}>{count}</span>
+      <span style={{ background: on ? '#ffffff33' : color + '22', color: on ? '#fff' : color, borderRadius: 10, padding: '1px 8px', fontSize: 12, fontWeight: 600 }}>{fmtNum(count)}</span>
     </button>
   );
 }

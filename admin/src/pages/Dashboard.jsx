@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, fmtVND } from '../api.js';
+import { api, fmtVND, fmtNum } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 
 function Stat({ label, value }) {
@@ -20,10 +20,10 @@ export default function Dashboard() {
       <Top />
       <div className="content">
         <div className="grid cols-4">
-          <Stat label="Tổng đơn hàng" value={d.total_orders} />
+          <Stat label="Tổng đơn hàng" value={fmtNum(d.total_orders)} />
           <Stat label="Tổng chi tiêu" value={fmtVND(d.total_spend)} />
-          <Stat label="YC chờ xử lý" value={d.pending_requests} />
-          <Stat label="Nhà cung cấp" value={d.supplier_count} />
+          <Stat label="YC chờ xử lý" value={fmtNum(d.pending_requests)} />
+          <Stat label="Nhà cung cấp" value={fmtNum(d.supplier_count)} />
         </div>
 
         <div className="grid cols-2" style={{ marginTop: 16 }}>
@@ -32,7 +32,7 @@ export default function Dashboard() {
             {d.by_status.map((s) => (
               <div key={s.status} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
                 <StatusBadge code={s.status} />
-                <strong>{s.count}</strong>
+                <strong>{fmtNum(s.count)}</strong>
               </div>
             ))}
           </div>

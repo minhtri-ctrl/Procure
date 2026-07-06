@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, fmtVND, fmtDate, getToken } from '../api.js';
+import { api, fmtVND, fmtNum, fmtDate, getToken } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import Modal from '../components/Modal.jsx';
 
@@ -96,7 +96,7 @@ export default function Warehouse() {
                 {stock.map((s) => (
                   <tr key={s.id}>
                     <td><strong>{s.sku}</strong></td><td>{s.item_name}</td><td>{s.warehouse || '-'}</td><td>{s.unit || '-'}</td>
-                    <td className="r">{s.qty_in}</td><td className="r">{s.qty_out}</td><td className="r"><strong>{s.qty_on_hand}</strong></td>
+                    <td className="r">{fmtNum(s.qty_in)}</td><td className="r">{fmtNum(s.qty_out)}</td><td className="r"><strong>{fmtNum(s.qty_on_hand)}</strong></td>
                     <td className="r">{fmtVND(s.unit_price)}</td><td className="r">{fmtVND(s.total_value)}</td>
                   </tr>
                 ))}
@@ -114,7 +114,7 @@ export default function Warehouse() {
                     <td><strong>{v.voucher_no}</strong></td>
                     <td><span className={`badge ${v.move_type === 'PNK' ? 'b-received' : 'b-ordered'}`}>{v.move_type}</span></td>
                     <td>{fmtDate(v.move_date)}</td><td>{v.warehouse || '-'}</td><td>{v.handler_name || '-'}</td>
-                    <td className="r">{v.line_count}</td><td className="r">{v.total_qty}</td>
+                    <td className="r">{fmtNum(v.line_count)}</td><td className="r">{fmtNum(v.total_qty)}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="btn-sm" onClick={() => printVoucher(v)}>🖨 In phiếu</button>{' '}
                       {canWrite && <button className="btn-sm btn-danger" onClick={() => deleteVoucher(v)}>Xoá</button>}
@@ -135,8 +135,8 @@ export default function Warehouse() {
                     <td>{fmtDate(m.move_date)}</td><td><strong>{m.voucher_no}</strong></td>
                     <td><span className={`badge ${m.move_type === 'PNK' ? 'b-received' : 'b-ordered'}`}>{m.move_type}</span></td>
                     <td>{m.sku}</td><td>{m.item_name}</td>
-                    <td className="r">{m.qty_in || ''}</td><td className="r">{m.qty_out || ''}</td>
-                    <td className="r"><strong>{m.running_balance}</strong></td><td className="r">{fmtVND(m.unit_price)}</td>
+                    <td className="r">{m.qty_in ? fmtNum(m.qty_in) : ''}</td><td className="r">{m.qty_out ? fmtNum(m.qty_out) : ''}</td>
+                    <td className="r"><strong>{fmtNum(m.running_balance)}</strong></td><td className="r">{fmtVND(m.unit_price)}</td>
                   </tr>
                 ))}
                 {!moves.length && <tr><td colSpan={9} className="center-msg">Chưa có giao dịch</td></tr>}

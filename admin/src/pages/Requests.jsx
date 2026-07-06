@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, fmtVND, fmtDate } from '../api.js';
+import { api, fmtVND, fmtNum, fmtDate } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import Modal from '../components/Modal.jsx';
 import BulkDeleteButton from '../components/BulkDeleteButton.jsx';
@@ -61,7 +61,7 @@ export default function Requests() {
                   <td>{r.requester_name}</td>
                   <td>{r.team_name || '-'}</td>
                   <td>{fmtDate(r.request_date)}</td>
-                  <td>{r.item_count}</td>
+                  <td>{fmtNum(r.item_count)}</td>
                   <td><span className={`badge b-${r.status}`}>{STATUS[r.status] || r.status}</span></td>
                 </tr>
               ))}
@@ -81,7 +81,7 @@ export default function Requests() {
               <thead><tr><th>#</th><th>Tên hàng</th><th>SL</th><th>Ngân sách</th><th>NCC đề xuất</th></tr></thead>
               <tbody>
                 {detail.items.map((it) => (
-                  <tr key={it.id}><td>{it.line_no}</td><td>{it.item_name}</td><td>{it.quantity}</td><td>{fmtVND(it.budget)}</td><td>{it.suggested_supplier || '-'}</td></tr>
+                  <tr key={it.id}><td>{it.line_no}</td><td>{it.item_name}</td><td>{fmtNum(it.quantity)}</td><td>{fmtVND(it.budget)}</td><td>{it.suggested_supplier || '-'}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -146,7 +146,7 @@ function RequestForm({ onClose, onSaved }) {
   };
 
   return (
-    <Modal title="Tạo yêu cầu mua" onClose={onClose} onSubmit={save} busy={busy} submitLabel="Gửi yêu cầu">
+    <Modal title="Tạo yêu cầu mua" onClose={onClose} onSubmit={save} busy={busy} submitLabel="Gửi yêu cầu" wide>
       <div className="row">
         <div className="field"><label>Tên dự án *</label><input required value={form.project_name} onChange={(e) => setF('project_name', e.target.value)} /></div>
         <div className="field"><label>Team</label>
