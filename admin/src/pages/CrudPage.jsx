@@ -22,7 +22,7 @@ export default function CrudPage({ title, endpoint, columns, fields, canWrite = 
   const [importErr, setImportErr] = useState('');
 
   const load = useCallback(() => {
-    api.get(`${endpoint}?q=${encodeURIComponent(q)}&limit=200`).then((r) => setRows(r.data || r)).catch((e) => setErr(e.message));
+    api.get(`${endpoint}?q=${encodeURIComponent(q)}&limit=5000`).then((r) => setRows(r.data || r)).catch((e) => setErr(e.message));
   }, [endpoint, q]);
   useEffect(() => { load(); }, [load]);
 
