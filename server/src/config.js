@@ -43,4 +43,12 @@ export const config = {
     password: fromUrl?.password ?? process.env.DB_PASSWORD ?? '',
     database: fromUrl?.database || process.env.DB_NAME || 'procureos',
   },
+  // Backup MySQL -> Google Sheets. Key không hardcode: đọc từ 1 trong 2 biến môi trường
+  // (file path cho local dev, nội dung base64 cho production không có filesystem riêng).
+  backup: {
+    spreadsheetId: process.env.GOOGLE_SHEET_ID || '',
+    serviceAccountKeyBase64: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_JSON || '',
+    credentialsFile: process.env.GOOGLE_APPLICATION_CREDENTIALS_FILE || '',
+    intervalMinutes: Number(process.env.BACKUP_INTERVAL_MINUTES || 10),
+  },
 };

@@ -467,6 +467,47 @@ CREATE TABLE IF NOT EXISTS signatories (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
+-- 19. BACKUP MySQL -> Google Sheets
+-- backup_config: danh sách bảng cần backup (thêm bảng mới = thêm 1 dòng, không sửa code).
+-- backup_state: cột hiện tại + trạng thái lần đồng bộ gần nhất của mỗi bảng.
+-- backup_log: nhật ký phát hiện bảng mới / cột mới / lỗi đồng bộ.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS backup_config (
+  id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  table_name     VARCHAR(190) NOT NULL,
+  is_enabled     TINYINT(1) NOT NULL DEFAULT 1,
+  sheet_tab_name VARCHAR(100) NULL,   -- tên tab trên Google Sheet; để trống = dùng table_name
+  note           VARCHAR(255) NULL,
+  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_backup_config_table (table_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS backup_state (
+  id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  table_name      VARCHAR(190) NOT NULL,
+  columns_json    LONGTEXT NULL,      -- danh sách cột ở lần đồng bộ gần nhất (để so sánh phát hiện cột mới)
+  row_count       INT NOT NULL DEFAULT 0,
+  last_synced_at  DATETIME NULL,
+  last_status     VARCHAR(20) NULL,   -- ok | error
+  last_error      TEXT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_backup_state_table (table_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS backup_log (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  event_type  VARCHAR(30) NOT NULL,   -- new_table | new_column | sync_error
+  table_name  VARCHAR(190) NULL,
+  detail      VARCHAR(1000) NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_backup_log_table (table_name),
+  KEY idx_backup_log_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
 -- Foreign keys "mềm" (thêm sau khi bảng đã tồn tại; bỏ qua nếu dữ liệu chưa khớp)
 -- ---------------------------------------------------------------------
 ALTER TABLE users        ADD CONSTRAINT fk_users_team     FOREIGN KEY (team_id)     REFERENCES teams(id)      ON DELETE SET NULL;

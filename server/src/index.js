@@ -22,6 +22,8 @@ import settingsRoutes from './routes/settings.js';
 import importRoutes from './routes/import.js';
 import notificationsRoutes from './routes/notifications.js';
 import suppliersImportRoutes from './routes/suppliersImport.js';
+import backupRoutes from './routes/backup.js';
+import { scheduleBackupSync } from './lib/backupSync.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -75,6 +77,7 @@ app.use('/api/workflow', workflowRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/import', importRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/backup', backupRoutes);
 
 // Phục vụ admin build (SPA) từ server/webui.
 // File entry được lưu dưới dạng spa.tpl (KHÔNG phải .html) để deploy runner của
@@ -99,6 +102,7 @@ app.use((err, req, res, next) => {
 initDb()
   .then(() => {
     app.listen(config.port, () => console.log(`[server] ProcureOS chạy tại cổng ${config.port}`));
+    scheduleBackupSync();
   })
   .catch((e) => {
     console.error('[server] Không khởi tạo được DB:', e.message);

@@ -238,6 +238,27 @@ async function ensureSignatories() {
   console.log('[db] Đã tạo danh sách người ký mặc định.');
 }
 
+// Danh sách bảng backup mặc định (dữ liệu nghiệp vụ) — loại trừ users (password_hash),
+// settings (chứa mật khẩu SMTP + mẫu .docx base64 rất nặng), attachments (ảnh base64),
+// catalog_access_log/notifications (log/transient). Muốn thêm bảng khác sau này: gọi
+// POST /api/backup/config, không cần sửa danh sách này hay deploy lại.
+const DEFAULT_BACKUP_TABLES = [
+  'teams', 'suppliers', 'categories', 'products',
+  'orders', 'order_items', 'purchase_requests', 'request_items',
+  'contracts', 'email_logs', 'ratings',
+  'warehouse_stock', 'inventory_moves',
+  'workflow_states', 'signatories', 'order_status_history',
+];
+
+async function ensureBackupConfig() {
+  const [{ c }] = await query('SELECT COUNT(*) AS c FROM backup_config');
+  if (c > 0) return;
+  for (const t of DEFAULT_BACKUP_TABLES) {
+    await query('INSERT IGNORE INTO backup_config (table_name) VALUES (?)', [t]);
+  }
+  console.log(`[db] Đã tạo cấu hình backup mặc định (${DEFAULT_BACKUP_TABLES.length} bảng).`);
+}
+
 export async function initDb() {
   await waitForDb();
   await runSqlFile('schema.sql');
@@ -253,5 +274,6 @@ export async function initDb() {
   await ensureTheme();
   await ensureCompanyInfo();
   await ensureSignatories();
+  await ensureBackupConfig();
   console.log('[db] Khởi tạo database hoàn tất.');
 }
