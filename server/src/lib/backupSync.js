@@ -1,6 +1,6 @@
 import { query } from '../db.js';
 import { config } from '../config.js';
-import { ensureSheetTab, writeSheetSnapshot, isBackupConfigured } from './googleSheets.js';
+import { ensureSheetTab, writeSheetSnapshot, isBackupConfigured, getBackupSpreadsheetId } from './googleSheets.js';
 
 // table_name đến từ backup_config (admin có thể tự thêm qua API) và bị nối trực tiếp vào SQL
 // làm định danh (backtick) chứ không phải giá trị tham số hoá được — chặn ký tự lạ để tránh injection.
@@ -61,11 +61,10 @@ async function upsertBackupState(tableName, patch) {
   }
 }
 
-async function syncTable(cfg) {
+async function syncTable(cfg, spreadsheetId) {
   const tableName = cfg.table_name;
   assertSafeIdentifier(tableName, 'Tên bảng');
   const tabName = cfg.sheet_tab_name || tableName;
-  const spreadsheetId = config.backup.spreadsheetId;
 
   const columns = await getTableColumns(tableName);
   if (!columns.length) throw new Error(`Bảng "${tableName}" không tồn tại trong MySQL`);
@@ -110,17 +109,18 @@ async function syncTable(cfg) {
 // Chạy 1 lượt đồng bộ toàn bộ bảng đang bật trong backup_config.
 // Mỗi bảng độc lập — 1 bảng lỗi không chặn các bảng còn lại.
 export async function runBackupSync() {
-  if (!isBackupConfigured()) {
+  if (!(await isBackupConfigured())) {
     console.log(
-      '[backup] Chưa cấu hình Google Sheets (thiếu GOOGLE_SHEET_ID hoặc service account key) — bỏ qua lượt đồng bộ.'
+      '[backup] Chưa cấu hình Google Sheets (thiếu Sheet ID hoặc service account key) — bỏ qua lượt đồng bộ.'
     );
     return { skipped: true };
   }
+  const spreadsheetId = await getBackupSpreadsheetId();
   const configs = await query('SELECT * FROM backup_config WHERE is_enabled = 1 ORDER BY table_name');
   const results = [];
   for (const cfg of configs) {
     try {
-      await syncTable(cfg);
+      await syncTable(cfg, spreadsheetId);
       results.push({ table: cfg.table_name, ok: true });
     } catch (e) {
       console.error(`[backup] Lỗi đồng bộ bảng "${cfg.table_name}":`, e.message);
@@ -139,14 +139,12 @@ export async function runBackupSync() {
 let intervalHandle = null;
 
 // Cron trong-process: chạy lần đầu ngắn sau khi server sẵn sàng, sau đó lặp lại theo chu kỳ.
+// Mỗi tick tự kiểm tra isBackupConfigured() — cấu hình có thể được set SAU lúc khởi động
+// (qua API PUT /api/backup/google-config lưu vào bảng settings) mà không cần restart container.
 export function scheduleBackupSync() {
   if (intervalHandle) return;
-  if (!isBackupConfigured()) {
-    console.log('[backup] Google Sheets backup chưa được cấu hình — cron không khởi động.');
-    return;
-  }
   const minutes = config.backup.intervalMinutes;
-  console.log(`[backup] Bật cron đồng bộ MySQL -> Google Sheets mỗi ${minutes} phút.`);
+  console.log(`[backup] Cron đồng bộ MySQL -> Google Sheets: mỗi ${minutes} phút (tự bỏ qua nếu chưa cấu hình).`);
   setTimeout(() => {
     runBackupSync().catch((e) => console.error('[backup] Lỗi lượt đồng bộ đầu tiên:', e.message));
   }, 30_000);

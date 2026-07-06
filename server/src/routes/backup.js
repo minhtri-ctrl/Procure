@@ -2,7 +2,7 @@ import express from 'express';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { query } from '../db.js';
 import { runBackupSync } from '../lib/backupSync.js';
-import { isBackupConfigured } from '../lib/googleSheets.js';
+import { isBackupConfigured, resetSheetsClientCache } from '../lib/googleSheets.js';
 
 const router = express.Router();
 router.use(authRequired, requireRole('admin'));
@@ -15,7 +15,40 @@ router.get('/status', async (req, res, next) => {
   try {
     const state = await query('SELECT * FROM backup_state ORDER BY table_name');
     const logs = await query('SELECT * FROM backup_log ORDER BY id DESC LIMIT 100');
-    res.json({ configured: isBackupConfigured(), state, logs });
+    res.json({ configured: await isBackupConfigured(), state, logs });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Cấu hình Google Sheets (Sheet ID + service account key base64) khi nền tảng deploy không có
+// chỗ đặt biến môi trường tuỳ ý — lưu vào bảng settings (LONGTEXT), giống cách SMTP password
+// đang được lưu. Không log/trả lại giá trị key trong bất kỳ response nào.
+router.put('/google-config', async (req, res, next) => {
+  try {
+    const { sheet_id, service_account_key_base64 } = req.body || {};
+    if (sheet_id !== undefined) {
+      await query(
+        `INSERT INTO settings (\`key\`, value, description) VALUES ('backup_google_sheet_id', ?, 'Google Sheet ID cho backup')
+         ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+        [sheet_id]
+      );
+    }
+    if (service_account_key_base64) {
+      // validate trước khi lưu để tránh lưu key hỏng
+      try {
+        JSON.parse(Buffer.from(service_account_key_base64, 'base64').toString('utf8'));
+      } catch {
+        return res.status(400).json({ error: 'service_account_key_base64 không hợp lệ (không giải mã/parse được)' });
+      }
+      await query(
+        `INSERT INTO settings (\`key\`, value, description) VALUES ('backup_google_key_b64', ?, 'Google service account key (base64) cho backup')
+         ON DUPLICATE KEY UPDATE value = VALUES(value)`,
+        [service_account_key_base64]
+      );
+    }
+    resetSheetsClientCache();
+    res.json({ ok: true, configured: await isBackupConfigured() });
   } catch (e) {
     next(e);
   }

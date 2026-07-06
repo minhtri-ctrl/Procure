@@ -1,14 +1,24 @@
 import { google } from 'googleapis';
 import fs from 'node:fs';
 import { config } from '../config.js';
+import { query } from '../db.js';
 
 let sheetsClientPromise = null;
 
-// Đọc service account key từ biến môi trường — KHÔNG hardcode path hay nội dung key.
-// Ưu tiên GOOGLE_SERVICE_ACCOUNT_KEY_JSON (base64) vì production (Demo System) không có
-// filesystem riêng để đặt file secrets/; local dev có thể dùng GOOGLE_APPLICATION_CREDENTIALS_FILE.
-function loadCredentials() {
-  const b64 = config.backup.serviceAccountKeyBase64;
+async function getSetting(key) {
+  const rows = await query('SELECT value FROM settings WHERE `key` = ?', [key]);
+  return rows[0]?.value || '';
+}
+
+// Đọc service account key + Sheet ID theo thứ tự ưu tiên:
+// 1) biến môi trường (KHÔNG hardcode trong code) — GOOGLE_SERVICE_ACCOUNT_KEY_JSON (base64, dùng
+//    cho production vì Demo System không có filesystem riêng để đặt file secrets/) hoặc
+//    GOOGLE_APPLICATION_CREDENTIALS_FILE (path, dùng cho local dev).
+// 2) fallback: bảng settings trong MySQL (key backup_google_key_b64 / backup_google_sheet_id) —
+//    cùng cơ chế đang dùng cho mật khẩu SMTP, set qua API admin PUT /api/backup/google-config,
+//    dùng khi nền tảng deploy không có chỗ cấu hình biến môi trường tuỳ ý.
+async function loadCredentials() {
+  const b64 = config.backup.serviceAccountKeyBase64 || (await getSetting('backup_google_key_b64'));
   if (b64) {
     try {
       return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
@@ -27,17 +37,29 @@ function loadCredentials() {
   return null;
 }
 
-export function isBackupConfigured() {
-  return Boolean(config.backup.spreadsheetId && loadCredentials());
+export async function getBackupSpreadsheetId() {
+  return config.backup.spreadsheetId || (await getSetting('backup_google_sheet_id'));
+}
+
+export async function isBackupConfigured() {
+  const id = await getBackupSpreadsheetId();
+  const creds = await loadCredentials();
+  return Boolean(id && creds);
+}
+
+// Gọi sau khi admin set/đổi cấu hình qua API để lần đồng bộ kế tiếp dùng key mới ngay,
+// không phải chờ restart container.
+export function resetSheetsClientCache() {
+  sheetsClientPromise = null;
 }
 
 async function getSheetsClient() {
   if (!sheetsClientPromise) {
     sheetsClientPromise = (async () => {
-      const credentials = loadCredentials();
+      const credentials = await loadCredentials();
       if (!credentials) {
         throw new Error(
-          'Không tìm thấy Google service account key (đặt GOOGLE_SERVICE_ACCOUNT_KEY_JSON hoặc GOOGLE_APPLICATION_CREDENTIALS_FILE).'
+          'Không tìm thấy Google service account key (GOOGLE_SERVICE_ACCOUNT_KEY_JSON / GOOGLE_APPLICATION_CREDENTIALS_FILE / settings.backup_google_key_b64).'
         );
       }
       const auth = new google.auth.GoogleAuth({
