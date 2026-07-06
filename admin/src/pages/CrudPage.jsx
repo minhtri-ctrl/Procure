@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api.js';
 import Modal from '../components/Modal.jsx';
 import { refreshSuppliers } from '../components/SupplierSelect.jsx';
+import { useMeta } from '../meta.jsx';
+import { colLabelKey, fieldLabelKey } from '../labelDefs.js';
 
 // Endpoint dùng chung với SupplierSelect: sau khi CRUD/import NCC ở đây,
 // phải xoá cache module của SupplierSelect để mọi ô chọn NCC khác load lại dữ liệu mới.
@@ -11,6 +13,9 @@ function invalidateSupplierCache(endpoint) {
 
 // Trang CRUD dùng chung cho các danh mục đơn giản.
 export default function CrudPage({ title, endpoint, columns, fields, canWrite = true, importEndpoint }) {
+  const { L } = useMeta();
+  const colLabel = (c) => L(colLabelKey(endpoint, c.key), c.label);
+  const fieldLabel = (f) => L(fieldLabelKey(endpoint, f.key), f.label);
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState(null); // object | null
@@ -65,15 +70,15 @@ export default function CrudPage({ title, endpoint, columns, fields, canWrite = 
       <div className="topbar"><h1>{title}</h1></div>
       <div className="content">
         <div className="toolbar">
-          <input className="search" placeholder="Tìm kiếm…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="search" placeholder={L('common.search_placeholder')} value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="spacer" />
           {canWrite && importEndpoint && (
             <label className="btn-sm" style={{ cursor: 'pointer' }}>
-              {importBusy ? 'Đang nhập…' : '📥 Nhập Excel'}
+              {importBusy ? L('common.importing') : L('common.import_excel')}
               <input type="file" accept=".xlsx,.xls" onChange={onImportFile} disabled={importBusy} style={{ display: 'none' }} />
             </label>
           )}
-          {canWrite && <button className="btn-primary" onClick={openNew}>+ Thêm mới</button>}
+          {canWrite && <button className="btn-primary" onClick={openNew}>{L('common.add')}</button>}
         </div>
         {importErr && <div className="error">{importErr}</div>}
         {importResult && (
@@ -85,20 +90,20 @@ export default function CrudPage({ title, endpoint, columns, fields, canWrite = 
         {err && <div className="error">{err}</div>}
         <div className="table-wrap">
           <table>
-            <thead><tr>{columns.map((c) => <th key={c.key}>{c.label}</th>)}{canWrite && <th></th>}</tr></thead>
+            <thead><tr>{columns.map((c) => <th key={c.key}>{colLabel(c)}</th>)}{canWrite && <th></th>}</tr></thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
                   {columns.map((c) => <td key={c.key}>{row[c.key] ?? ''}</td>)}
                   {canWrite && (
                     <td>
-                      <button className="btn-sm" onClick={() => openEdit(row)}>Sửa</button>{' '}
-                      <button className="btn-sm btn-danger" onClick={() => remove(row)}>Xoá</button>
+                      <button className="btn-sm" onClick={() => openEdit(row)}>{L('common.edit')}</button>{' '}
+                      <button className="btn-sm btn-danger" onClick={() => remove(row)}>{L('common.delete')}</button>
                     </td>
                   )}
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan={columns.length + 1} className="center-msg">Không có dữ liệu</td></tr>}
+              {!rows.length && <tr><td colSpan={columns.length + 1} className="center-msg">{L('common.no_data')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -108,7 +113,7 @@ export default function CrudPage({ title, endpoint, columns, fields, canWrite = 
         <Modal title={editing.id ? `Sửa ${title}` : `Thêm ${title}`} onClose={() => setEditing(null)} onSubmit={save} busy={busy}>
           {fields.map((f) => (
             <div className="field" key={f.key}>
-              <label>{f.label}{f.required && ' *'}</label>
+              <label>{fieldLabel(f)}{f.required && ' *'}</label>
               <input
                 type={f.type || 'text'}
                 value={form[f.key] ?? ''}

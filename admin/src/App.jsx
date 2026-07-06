@@ -21,53 +21,31 @@ import Contracts from './pages/Contracts.jsx';
 import AIAssistant from './pages/AIAssistant.jsx';
 import ItemBoard from './pages/ItemBoard.jsx';
 import NotificationBell from './components/NotificationBell.jsx';
-
-const ALL = ['admin', 'purchasing', 'warehouse', 'requester', 'pm'];
-const OPS = ['admin', 'purchasing']; // buyer/admin thao tác
-const NAV = [
-  { section: 'Tổng quan', roles: OPS },
-  { to: '/', label: '📊 Dashboard', end: true, roles: OPS },
-  { section: 'Nghiệp vụ', roles: ALL },
-  { to: '/requests', label: '📝 Yêu cầu mua', roles: ['admin', 'purchasing', 'pm', 'requester'] },
-  { to: '/orders', label: '📦 Đơn hàng', roles: ['admin', 'purchasing', 'pm', 'requester'] },
-  { to: '/item-board', label: '🧩 Xử lý mặt hàng', roles: OPS },
-  { to: '/products', label: '🛒 Danh mục SP', roles: OPS },
-  { to: '/warehouse', label: '🏬 Kho hàng', roles: ['admin', 'purchasing', 'warehouse'] },
-  { to: '/contracts', label: '📄 Hợp đồng', roles: OPS },
-  { to: '/emails', label: '✉️ Email', roles: OPS },
-  { to: '/ai', label: '🤖 Trợ lý AI', roles: OPS },
-  { section: 'Danh mục', roles: OPS },
-  { to: '/suppliers', label: '🏢 Nhà cung cấp', roles: OPS },
-  { to: '/teams', label: '👥 Team', roles: OPS },
-  { to: '/categories', label: '🏷️ Loại hàng', roles: OPS },
-  { section: 'Hệ thống', roles: ['admin'] },
-  { to: '/users', label: '🔑 Người dùng', roles: ['admin'] },
-  { to: '/admin/import', label: '⬆️ Nhập dữ liệu', roles: ['admin'] },
-  { to: '/admin/workflow', label: '🔀 Cấu hình Workflow', roles: ['admin'] },
-  { to: '/admin/appearance', label: '🎨 Giao diện', roles: ['admin'] },
-  { to: '/admin/company', label: '🏢 Công ty & Người ký', roles: ['admin'] },
-];
+import LabelSettings from './pages/LabelSettings.jsx';
+import { NAV, SUPPLIER_COLUMNS, SUPPLIER_FIELDS, TEAM_COLUMNS, TEAM_FIELDS, CATEGORY_COLUMNS, CATEGORY_FIELDS } from './labelDefs.js';
+import { useMeta } from './meta.jsx';
 
 function Layout({ children }) {
   const { user, logout } = useAuth();
   const loc = useLocation();
+  const { L } = useMeta();
   // Gom NAV thành các nhóm, lọc theo vai trò, bỏ nhóm rỗng.
   const groups = [];
   let cur = null;
   for (const it of NAV) {
-    if (it.section) { cur = { title: it.section, items: [] }; groups.push(cur); }
+    if (it.section) { cur = { key: it.key, title: L(it.key, it.label), items: [] }; groups.push(cur); }
     else if (cur && (!it.roles || it.roles.includes(user.role))) cur.items.push(it);
   }
   const visible = groups.filter((g) => g.items.length);
-  const activeTitle = visible.find((g) => g.items.some((i) => i.to === loc.pathname || (i.to !== '/' && loc.pathname.startsWith(i.to))))?.title;
+  const activeKey = visible.find((g) => g.items.some((i) => i.to === loc.pathname || (i.to !== '/' && loc.pathname.startsWith(i.to))))?.key;
   // Nhiều nhóm có thể mở cùng lúc — dùng Set thay vì 1 giá trị duy nhất (accordion).
-  const [openGroups, setOpenGroups] = useState(() => new Set(visible.map((g) => g.title)));
+  const [openGroups, setOpenGroups] = useState(() => new Set(visible.map((g) => g.key)));
   useEffect(() => {
-    if (activeTitle) setOpenGroups((prev) => (prev.has(activeTitle) ? prev : new Set(prev).add(activeTitle)));
-  }, [activeTitle]);
-  const toggleGroup = (title) => setOpenGroups((prev) => {
+    if (activeKey) setOpenGroups((prev) => (prev.has(activeKey) ? prev : new Set(prev).add(activeKey)));
+  }, [activeKey]);
+  const toggleGroup = (key) => setOpenGroups((prev) => {
     const next = new Set(prev);
-    if (next.has(title)) next.delete(title); else next.add(title);
+    if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === '1');
@@ -85,17 +63,20 @@ function Layout({ children }) {
         </div>
         <nav>
           {visible.map((g) => (
-            <div key={g.title}>
+            <div key={g.key}>
               {!collapsed && (
-                <div className={`grp-hd${openGroups.has(g.title) ? ' open' : ''}`} onClick={() => toggleGroup(g.title)}>
+                <div className={`grp-hd${openGroups.has(g.key) ? ' open' : ''}`} onClick={() => toggleGroup(g.key)}>
                   <span>{g.title}</span><span className="chev">▶</span>
                 </div>
               )}
-              {(collapsed || openGroups.has(g.title)) && g.items.map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.end} title={item.label} className={({ isActive }) => (isActive ? 'active' : '')}>
-                  {collapsed ? iconOf(item.label) : item.label}
-                </NavLink>
-              ))}
+              {(collapsed || openGroups.has(g.key)) && g.items.map((item) => {
+                const label = L(item.key, item.label);
+                return (
+                  <NavLink key={item.to} to={item.to} end={item.end} title={label} className={({ isActive }) => (isActive ? 'active' : '')}>
+                    {collapsed ? iconOf(item.label) : label}
+                  </NavLink>
+                );
+              })}
             </div>
           ))}
         </nav>
@@ -148,62 +129,25 @@ export default function App() {
         <Route path="/suppliers" element={<CrudPage
           title="Nhà cung cấp" endpoint="/suppliers" canWrite={canWrite}
           importEndpoint="/suppliers/import"
-          columns={[
-            { key: 'name', label: 'Tên NCC' },
-            { key: 'vendor_no', label: 'Mã NCC' },
-            { key: 'contact_name', label: 'Liên hệ' },
-            { key: 'contact_email', label: 'Email' },
-            { key: 'payment_term_days', label: 'Công nợ (ngày)' },
-          ]}
-          fields={[
-            { key: 'name', label: 'Tên NCC', required: true },
-            { key: 'vendor_no', label: 'Mã NCC' },
-            { key: 'tax_code', label: 'Mã số thuế' },
-            { key: 'contact_name', label: 'Người liên hệ' },
-            { key: 'contact_email', label: 'Email' },
-            { key: 'contact_phone', label: 'Điện thoại' },
-            { key: 'address', label: 'Địa chỉ' },
-            { key: 'payment_term_days', label: 'Công nợ (ngày)', type: 'number' },
-            { key: 'representative', label: 'Người đại diện ký' },
-            { key: 'rep_title', label: 'Chức vụ người đại diện' },
-            { key: 'master_contract', label: 'Số hợp đồng khung' },
-            { key: 'bank_name', label: 'Ngân hàng' },
-            { key: 'bank_account', label: 'Số tài khoản' },
-            { key: 'bank_branch', label: 'Chi nhánh NH' },
-            { key: 'delivery_person', label: 'Người giao hàng' },
-            { key: 'delivery_phone', label: 'SĐT người giao hàng' },
-            { key: 'delivery_email', label: 'Email người giao hàng' },
-          ]}
+          columns={SUPPLIER_COLUMNS}
+          fields={SUPPLIER_FIELDS}
         />} />
         <Route path="/teams" element={<CrudPage
           title="Team" endpoint="/teams" canWrite={canWrite}
-          columns={[
-            { key: 'code', label: 'Mã' }, { key: 'name', label: 'Tên team' },
-            { key: 'lead_name', label: 'Trưởng nhóm' }, { key: 'lead_title', label: 'Chức vụ' },
-          ]}
-          fields={[
-            { key: 'code', label: 'Mã team', required: true },
-            { key: 'name', label: 'Tên team' },
-            { key: 'lead_name', label: 'Trưởng nhóm' },
-            { key: 'lead_title', label: 'Chức vụ' },
-          ]}
+          columns={TEAM_COLUMNS}
+          fields={TEAM_FIELDS}
         />} />
         <Route path="/categories" element={<CrudPage
           title="Loại hàng" endpoint="/categories" canWrite={canWrite}
-          columns={[
-            { key: 'code', label: 'Mã' }, { key: 'name', label: 'Tên loại' }, { key: 'abbr', label: 'Viết tắt' },
-          ]}
-          fields={[
-            { key: 'code', label: 'Mã loại', required: true },
-            { key: 'name', label: 'Tên loại', required: true },
-            { key: 'abbr', label: 'Viết tắt' },
-          ]}
+          columns={CATEGORY_COLUMNS}
+          fields={CATEGORY_FIELDS}
         />} />
         <Route path="/users" element={user.role === 'admin' ? <Users /> : <Navigate to="/" />} />
         <Route path="/admin/import" element={user.role === 'admin' ? <ImportData /> : <Navigate to="/" />} />
         <Route path="/admin/workflow" element={user.role === 'admin' ? <WorkflowConfig /> : <Navigate to="/" />} />
         <Route path="/admin/appearance" element={user.role === 'admin' ? <Appearance /> : <Navigate to="/" />} />
         <Route path="/admin/company" element={user.role === 'admin' ? <CompanySettings /> : <Navigate to="/" />} />
+        <Route path="/admin/labels" element={user.role === 'admin' ? <LabelSettings /> : <Navigate to="/" />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>

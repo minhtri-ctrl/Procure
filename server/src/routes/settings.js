@@ -23,6 +23,24 @@ router.put('/theme', authRequired, requireRole('admin'), wrap(async (req, res) =
   res.json({ ok: true });
 }));
 
+// Nhãn hiển thị tuỳ chỉnh (menu/cột/label) — chỉ đổi PHẦN HIỂN THỊ, không đụng dữ liệu/cấu trúc DB.
+// GET công khai (authed) để mọi trang áp dụng; PUT chỉ admin.
+router.get('/labels', authRequired, wrap(async (req, res) => {
+  const rows = await query('SELECT value FROM settings WHERE `key` = ?', ['ui_labels']);
+  let labels = {};
+  try { labels = rows.length ? JSON.parse(rows[0].value) : {}; } catch { labels = {}; }
+  res.json(labels);
+}));
+
+router.put('/labels', authRequired, requireRole('admin'), wrap(async (req, res) => {
+  const labels = req.body || {};
+  await query(
+    'INSERT INTO settings (`key`, value, description) VALUES (?,?,?) ON DUPLICATE KEY UPDATE value = VALUES(value)',
+    ['ui_labels', JSON.stringify(labels), 'Nhãn hiển thị tuỳ chỉnh (menu/cột/label)']
+  );
+  res.json({ ok: true });
+}));
+
 // Thông tin công ty (Bên A) — điền tự động vào hợp đồng .docx. GET công khai (authed), PUT chỉ admin.
 router.get('/company', authRequired, wrap(async (req, res) => {
   const rows = await query('SELECT value FROM settings WHERE `key` = ?', ['company_info']);
