@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { api, fmtVND, fmtNum, fmtDate, getToken } from '../api.js';
 import { useAuth } from '../auth.jsx';
+import { useMeta } from '../meta.jsx';
 import Modal from '../components/Modal.jsx';
 
 export default function Warehouse() {
   const { user } = useAuth();
+  const { L } = useMeta();
   const canWrite = ['admin', 'purchasing', 'warehouse'].includes(user.role);
   const [tab, setTab] = useState('stock');
   const [stock, setStock] = useState([]);
@@ -91,7 +93,17 @@ export default function Warehouse() {
         {tab === 'stock' ? (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>SKU</th><th>Tên hàng</th><th>Kho</th><th>ĐVT</th><th>Nhập</th><th>Xuất</th><th>Tồn</th><th>Đơn giá</th><th>Giá trị tồn</th></tr></thead>
+              <thead><tr>
+                <th>{L('warehouse.stock_col.sku', 'SKU')}</th>
+                <th>{L('warehouse.stock_col.ten_hang', 'Tên hàng')}</th>
+                <th>{L('warehouse.stock_col.kho', 'Kho')}</th>
+                <th>{L('warehouse.stock_col.dvt', 'ĐVT')}</th>
+                <th>{L('warehouse.stock_col.nhap', 'Nhập')}</th>
+                <th>{L('warehouse.stock_col.xuat', 'Xuất')}</th>
+                <th>{L('warehouse.stock_col.ton', 'Tồn')}</th>
+                <th>{L('warehouse.stock_col.don_gia', 'Đơn giá')}</th>
+                <th>{L('warehouse.stock_col.gia_tri_ton', 'Giá trị tồn')}</th>
+              </tr></thead>
               <tbody>
                 {stock.map((s) => (
                   <tr key={s.id}>
@@ -107,7 +119,16 @@ export default function Warehouse() {
         ) : tab === 'vouchers' ? (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Số CT</th><th>Loại</th><th>Ngày</th><th>Kho</th><th>Người phụ trách</th><th>Số dòng</th><th>Tổng SL</th><th></th></tr></thead>
+              <thead><tr>
+                <th>{L('warehouse.voucher_col.so_ct', 'Số CT')}</th>
+                <th>{L('warehouse.voucher_col.loai', 'Loại')}</th>
+                <th>{L('warehouse.voucher_col.ngay', 'Ngày')}</th>
+                <th>{L('warehouse.voucher_col.kho', 'Kho')}</th>
+                <th>{L('warehouse.voucher_col.nguoi_phu_trach', 'Người phụ trách')}</th>
+                <th>{L('warehouse.voucher_col.so_dong', 'Số dòng')}</th>
+                <th>{L('warehouse.voucher_col.tong_sl', 'Tổng SL')}</th>
+                <th></th>
+              </tr></thead>
               <tbody>
                 {vouchers.map((v) => (
                   <tr key={v.voucher_no}>
@@ -128,7 +149,17 @@ export default function Warehouse() {
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Ngày</th><th>Số CT</th><th>Loại</th><th>SKU</th><th>Tên hàng</th><th>Nhập</th><th>Xuất</th><th>Tồn</th><th>Đơn giá</th></tr></thead>
+              <thead><tr>
+                <th>{L('warehouse.ledger_col.ngay', 'Ngày')}</th>
+                <th>{L('warehouse.ledger_col.so_ct', 'Số CT')}</th>
+                <th>{L('warehouse.ledger_col.loai', 'Loại')}</th>
+                <th>{L('warehouse.ledger_col.sku', 'SKU')}</th>
+                <th>{L('warehouse.ledger_col.ten_hang', 'Tên hàng')}</th>
+                <th>{L('warehouse.ledger_col.nhap', 'Nhập')}</th>
+                <th>{L('warehouse.ledger_col.xuat', 'Xuất')}</th>
+                <th>{L('warehouse.ledger_col.ton', 'Tồn')}</th>
+                <th>{L('warehouse.ledger_col.don_gia', 'Đơn giá')}</th>
+              </tr></thead>
               <tbody>
                 {moves.map((m) => (
                   <tr key={m.id}>
@@ -152,6 +183,7 @@ export default function Warehouse() {
 }
 
 function VoucherForm({ type, onClose, onSaved }) {
+  const { L } = useMeta();
   const [skus, setSkus] = useState([]);
   const [warehouse, setWarehouse] = useState('KHO_1');
   const [handlerName, setHandlerName] = useState('');
@@ -189,15 +221,15 @@ function VoucherForm({ type, onClose, onSaved }) {
   return (
     <Modal title={type === 'PNK' ? 'Phiếu nhập kho (PNK)' : 'Phiếu xuất kho (PXK)'} onClose={onClose} onSubmit={save} busy={busy} submitLabel="Ghi phiếu">
       <div className="row">
-        <div className="field"><label>Kho</label><input value={warehouse} onChange={(e) => setWarehouse(e.target.value)} /></div>
-        <div className="field"><label>{type === 'PNK' ? 'Người yêu cầu' : 'Người nhận hàng'}</label><input value={handlerName} onChange={(e) => setHandlerName(e.target.value)} /></div>
+        <div className="field"><label>{L('warehouse.field.kho', 'Kho')}</label><input value={warehouse} onChange={(e) => setWarehouse(e.target.value)} /></div>
+        <div className="field"><label>{type === 'PNK' ? L('warehouse.field.nguoi_yeu_cau', 'Người yêu cầu') : L('warehouse.field.nguoi_nhan', 'Người nhận hàng')}</label><input value={handlerName} onChange={(e) => setHandlerName(e.target.value)} /></div>
       </div>
-      <div className="field"><label>Lý do {type === 'PNK' ? 'nhập' : 'xuất'} kho</label><input value={reason} onChange={(e) => setReason(e.target.value)} /></div>
+      <div className="field"><label>{type === 'PNK' ? L('warehouse.field.ly_do_nhap', 'Lý do nhập kho') : L('warehouse.field.ly_do_xuat', 'Lý do xuất kho')}</label><input value={reason} onChange={(e) => setReason(e.target.value)} /></div>
       <div className="row">
-        <div className="field"><label>Số QĐNB / TBKM</label><input value={qdnb} onChange={(e) => setQdnb(e.target.value)} /></div>
-        {type === 'PXK' && <div className="field"><label>Số ticket xuất kho</label><input value={ticket} onChange={(e) => setTicket(e.target.value)} /></div>}
+        <div className="field"><label>{L('warehouse.field.so_qdnb_tbkm', 'Số QĐNB / TBKM')}</label><input value={qdnb} onChange={(e) => setQdnb(e.target.value)} /></div>
+        {type === 'PXK' && <div className="field"><label>{L('warehouse.field.so_ticket', 'Số ticket xuất kho')}</label><input value={ticket} onChange={(e) => setTicket(e.target.value)} /></div>}
       </div>
-      <label>Danh sách hàng</label>
+      <label>{L('warehouse.field.danh_sach_hang', 'Danh sách hàng')}</label>
       {lines.map((l, i) => (
         <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, marginBottom: 8 }}>
           <div className="row" style={{ marginBottom: 6 }}>

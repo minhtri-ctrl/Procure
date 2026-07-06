@@ -7,7 +7,7 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import BulkDeleteButton from '../components/BulkDeleteButton.jsx';
 
 export default function Orders() {
-  const { states } = useMeta();
+  const { states, L } = useMeta();
   const { user } = useAuth();
   const canWrite = ['admin', 'purchasing'].includes(user.role);
   const canPurge = ['admin', 'pm'].includes(user.role);
@@ -54,7 +54,16 @@ export default function Orders() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Mã đơn</th><th>Dự án</th><th>Team</th><th>NCC</th><th>Ngày YC</th><th>Số dòng</th><th>Giá trị</th><th>Trạng thái</th></tr>
+              <tr>
+                <th>{L('orders.col.ma_don', 'Mã đơn')}</th>
+                <th>{L('orders.col.du_an', 'Dự án')}</th>
+                <th>{L('orders.col.team', 'Team')}</th>
+                <th>{L('orders.col.ncc', 'NCC')}</th>
+                <th>{L('orders.col.ngay_yc', 'Ngày YC')}</th>
+                <th>{L('orders.col.so_dong', 'Số dòng')}</th>
+                <th>{L('orders.col.gia_tri', 'Giá trị')}</th>
+                <th>{L('orders.col.trang_thai', 'Trạng thái')}</th>
+              </tr>
             </thead>
             <tbody>
               {rows.map((o) => (

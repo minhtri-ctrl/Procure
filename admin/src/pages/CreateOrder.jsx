@@ -14,7 +14,7 @@ const emptyLine = () => ({
 export default function CreateOrder() {
   const nav = useNavigate();
   const { user } = useAuth();
-  const { states } = useMeta();
+  const { states, L } = useMeta();
   const [teams, setTeams] = useState([]);
   const [diemCustom, setDiemCustom] = useState(false);
   const [header, setHeader] = useState({
@@ -67,13 +67,13 @@ export default function CreateOrder() {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>📋 Thông tin đơn hàng</h3>
           <div className="row">
-            <div className="field"><label>MA_DH</label><input value="Tự sinh khi lưu (RQ-TEAM-YY-NNNN)" disabled /></div>
-            <div className="field"><label>Tiến trình</label>
+            <div className="field"><label>{L('create_order.field.ma_dh', 'MA_DH')}</label><input value="Tự sinh khi lưu (RQ-TEAM-YY-NNNN)" disabled /></div>
+            <div className="field"><label>{L('create_order.field.tien_trinh', 'Tiến trình')}</label>
               <select value={header.status} onChange={(e) => setH('status', e.target.value)}>
                 {states.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
               </select>
             </div>
-            <div className="field"><label>Điểm nhận</label>
+            <div className="field"><label>{L('create_order.field.diem_nhan', 'Điểm nhận')}</label>
               <select value={diemCustom ? '__custom' : header.receiving_point} onChange={(e) => {
                 if (e.target.value === '__custom') { setDiemCustom(true); setH('receiving_point', ''); }
                 else { setDiemCustom(false); setH('receiving_point', e.target.value); }
@@ -86,13 +86,13 @@ export default function CreateOrder() {
             </div>
           </div>
           <div className="row">
-            <div className="field"><label>Ngày YC</label><input type="date" value={header.request_date} onChange={(e) => setH('request_date', e.target.value)} /></div>
-            <div className="field"><label>Ngày nhận</label><input type="date" value={header.expected_date} onChange={(e) => setH('expected_date', e.target.value)} /></div>
-            <div className="field"><label>Email</label><input type="email" value={header.requester_email} onChange={(e) => setH('requester_email', e.target.value)} /></div>
+            <div className="field"><label>{L('create_order.field.ngay_yc', 'Ngày YC')}</label><input type="date" value={header.request_date} onChange={(e) => setH('request_date', e.target.value)} /></div>
+            <div className="field"><label>{L('create_order.field.ngay_nhan', 'Ngày nhận')}</label><input type="date" value={header.expected_date} onChange={(e) => setH('expected_date', e.target.value)} /></div>
+            <div className="field"><label>{L('create_order.field.email', 'Email')}</label><input type="email" value={header.requester_email} onChange={(e) => setH('requester_email', e.target.value)} /></div>
           </div>
           <div className="row">
-            <div className="field"><label>Tên người YC</label><input value={header.requester_name} onChange={(e) => setH('requester_name', e.target.value)} /></div>
-            <div className="field"><label>Team *</label>
+            <div className="field"><label>{L('create_order.field.ten_nguoi_yc', 'Tên người YC')}</label><input value={header.requester_name} onChange={(e) => setH('requester_name', e.target.value)} /></div>
+            <div className="field"><label>{L('create_order.field.team', 'Team *')}</label>
               <select value={header.team_id} onChange={(e) => {
                 const t = teams.find((x) => String(x.id) === e.target.value);
                 setHeader({ ...header, team_id: e.target.value, pm: t?.lead_name || header.pm });
@@ -101,15 +101,15 @@ export default function CreateOrder() {
                 {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
-            <div className="field"><label>Tên dự án</label><input value={header.project_name} onChange={(e) => setH('project_name', e.target.value)} /></div>
+            <div className="field"><label>{L('create_order.field.ten_du_an', 'Tên dự án')}</label><input value={header.project_name} onChange={(e) => setH('project_name', e.target.value)} /></div>
           </div>
           <div className="row">
-            <div className="field"><label>Hạng mục</label>
+            <div className="field"><label>{L('create_order.field.hang_muc', 'Hạng mục')}</label>
               <select value={header.hang_muc} onChange={(e) => setH('hang_muc', e.target.value)}>
                 {HANG_MUC.map((h) => <option key={h} value={h}>{h}</option>)}
               </select>
             </div>
-            <div className="field"><label>PM</label><input value={header.pm} onChange={(e) => setH('pm', e.target.value)} /></div>
+            <div className="field"><label>{L('create_order.field.pm', 'PM')}</label><input value={header.pm} onChange={(e) => setH('pm', e.target.value)} /></div>
             <div className="field" />
           </div>
         </div>
@@ -122,9 +122,11 @@ export default function CreateOrder() {
           <div className="table-wrap" style={{ marginTop: 12 }}>
             <table>
               <thead><tr>
-                <th>Loại HH</th><th>Tên hàng</th><th>Mô tả</th><th>SL</th><th>Đơn giá</th><th>VAT%</th>
-                <th>Tiền thuế</th><th>Thành tiền</th><th>Tổng</th><th>ĐVT</th><th>Thiết kế</th><th>Ghi chú</th>
-                <th>Số PR</th><th>NCC</th><th>Master</th><th></th>
+                <th>{L('create_order.col.loai_hh', 'Loại HH')}</th><th>{L('create_order.col.ten_hang', 'Tên hàng')}</th><th>{L('create_order.col.mo_ta', 'Mô tả')}</th>
+                <th>{L('create_order.col.sl', 'SL')}</th><th>{L('create_order.col.don_gia', 'Đơn giá')}</th><th>{L('create_order.col.vat', 'VAT%')}</th>
+                <th>{L('create_order.col.tien_thue', 'Tiền thuế')}</th><th>{L('create_order.col.thanh_tien', 'Thành tiền')}</th><th>{L('create_order.col.tong', 'Tổng')}</th>
+                <th>{L('create_order.col.dvt', 'ĐVT')}</th><th>{L('create_order.col.thiet_ke', 'Thiết kế')}</th><th>{L('create_order.col.ghi_chu', 'Ghi chú')}</th>
+                <th>{L('create_order.col.so_pr', 'Số PR')}</th><th>{L('create_order.col.ncc', 'NCC')}</th><th>{L('create_order.col.master', 'Master')}</th><th></th>
               </tr></thead>
               <tbody>
                 {lines.map((l, i) => {

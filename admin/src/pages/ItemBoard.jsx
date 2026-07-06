@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, fmtVND, fmtNum } from '../api.js';
+import { useMeta } from '../meta.jsx';
 import { LINE_STATUSES, lineStatusOf } from '../lineStatus.js';
 
 const FLAGS = [
@@ -122,6 +123,7 @@ export default function ItemBoard() {
 }
 
 function OrderGroup({ order, open, onToggle, savingId, onChangeStatus }) {
+  const { L } = useMeta();
   const f = order.flags || {};
   const activeFlags = FLAGS.filter((fl) => f[fl.code]);
   return (
@@ -148,9 +150,9 @@ function OrderGroup({ order, open, onToggle, savingId, onChangeStatus }) {
           <table>
             <thead>
               <tr>
-                <th>Tên hàng</th><th>Loại</th><th className="r">SL</th>
-                <th className="r">Đơn giá</th><th className="r">Tổng</th><th>NCC</th>
-                <th style={{ minWidth: 160 }}>Trạng thái xử lý</th>
+                <th>{L('item_board.col.ten_hang', 'Tên hàng')}</th><th>{L('item_board.col.loai', 'Loại')}</th><th className="r">{L('item_board.col.sl', 'SL')}</th>
+                <th className="r">{L('item_board.col.don_gia', 'Đơn giá')}</th><th className="r">{L('item_board.col.tong', 'Tổng')}</th><th>{L('item_board.col.ncc', 'NCC')}</th>
+                <th style={{ minWidth: 160 }}>{L('item_board.col.trang_thai_xu_ly', 'Trạng thái xử lý')}</th>
               </tr>
             </thead>
             <tbody>

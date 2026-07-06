@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, fmtVND, fmtNum, fmtDate } from '../api.js';
 import { useAuth } from '../auth.jsx';
+import { useMeta } from '../meta.jsx';
 import Modal from '../components/Modal.jsx';
 import BulkDeleteButton from '../components/BulkDeleteButton.jsx';
 import { LOAI_HH, DIEM_NHAN, HANG_MUC } from '../constants.js';
@@ -10,6 +11,7 @@ const STATUS = { new: 'Mới', confirmed: 'Đã duyệt', rejected: 'Từ chối
 
 export default function Requests() {
   const { user } = useAuth();
+  const { L } = useMeta();
   const canWrite = ['admin', 'purchasing'].includes(user.role);
   const canPurge = ['admin', 'pm'].includes(user.role);
   const [rows, setRows] = useState([]);
@@ -52,7 +54,15 @@ export default function Requests() {
         {err && <div className="error">{err}</div>}
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Mã YC</th><th>Dự án</th><th>Người YC</th><th>Team</th><th>Ngày YC</th><th>Số dòng</th><th>Trạng thái</th></tr></thead>
+            <thead><tr>
+              <th>{L('requests.col.ma_yc', 'Mã YC')}</th>
+              <th>{L('requests.col.du_an', 'Dự án')}</th>
+              <th>{L('requests.col.nguoi_yc', 'Người YC')}</th>
+              <th>{L('requests.col.team', 'Team')}</th>
+              <th>{L('requests.col.ngay_yc', 'Ngày YC')}</th>
+              <th>{L('requests.col.so_dong', 'Số dòng')}</th>
+              <th>{L('requests.col.trang_thai', 'Trạng thái')}</th>
+            </tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => openDetail(r)}>
@@ -78,7 +88,13 @@ export default function Requests() {
           <span className={`badge b-${detail.status}`}>{STATUS[detail.status]}</span>
           <div className="table-wrap" style={{ marginTop: 14 }}>
             <table>
-              <thead><tr><th>#</th><th>Tên hàng</th><th>SL</th><th>Ngân sách</th><th>NCC đề xuất</th></tr></thead>
+              <thead><tr>
+                <th>{L('requests.detail_col.stt', '#')}</th>
+                <th>{L('requests.detail_col.ten_hang', 'Tên hàng')}</th>
+                <th>{L('requests.detail_col.sl', 'SL')}</th>
+                <th>{L('requests.detail_col.ngan_sach', 'Ngân sách')}</th>
+                <th>{L('requests.detail_col.ncc_de_xuat', 'NCC đề xuất')}</th>
+              </tr></thead>
               <tbody>
                 {detail.items.map((it) => (
                   <tr key={it.id}><td>{it.line_no}</td><td>{it.item_name}</td><td>{fmtNum(it.quantity)}</td><td>{fmtVND(it.budget)}</td><td>{it.suggested_supplier || '-'}</td></tr>
@@ -113,6 +129,7 @@ export default function Requests() {
 
 function RequestForm({ onClose, onSaved }) {
   const { user } = useAuth();
+  const { L } = useMeta();
   const [teams, setTeams] = useState([]);
   const [diemCustom, setDiemCustom] = useState(false);
   const [form, setForm] = useState({
@@ -148,25 +165,25 @@ function RequestForm({ onClose, onSaved }) {
   return (
     <Modal title="Tạo yêu cầu mua" onClose={onClose} onSubmit={save} busy={busy} submitLabel="Gửi yêu cầu" wide>
       <div className="row">
-        <div className="field"><label>Tên dự án *</label><input required value={form.project_name} onChange={(e) => setF('project_name', e.target.value)} /></div>
-        <div className="field"><label>Team</label>
+        <div className="field"><label>{L('requests.field.ten_du_an', 'Tên dự án *')}</label><input required value={form.project_name} onChange={(e) => setF('project_name', e.target.value)} /></div>
+        <div className="field"><label>{L('requests.field.team', 'Team')}</label>
           <select value={form.team_id} onChange={(e) => pickTeam(e.target.value)}>
             <option value="">-- chọn --</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </div>
-        <div className="field"><label>PM</label><input value={form.pm} onChange={(e) => setF('pm', e.target.value)} /></div>
+        <div className="field"><label>{L('requests.field.pm', 'PM')}</label><input value={form.pm} onChange={(e) => setF('pm', e.target.value)} /></div>
       </div>
       <div className="row">
-        <div className="field"><label>Người yêu cầu</label><input value={form.requester_name} onChange={(e) => setF('requester_name', e.target.value)} /></div>
-        <div className="field"><label>Email</label><input type="email" value={form.requester_email} onChange={(e) => setF('requester_email', e.target.value)} /></div>
-        <div className="field"><label>Hạng mục</label>
+        <div className="field"><label>{L('requests.field.nguoi_yeu_cau', 'Người yêu cầu')}</label><input value={form.requester_name} onChange={(e) => setF('requester_name', e.target.value)} /></div>
+        <div className="field"><label>{L('requests.field.email', 'Email')}</label><input type="email" value={form.requester_email} onChange={(e) => setF('requester_email', e.target.value)} /></div>
+        <div className="field"><label>{L('requests.field.hang_muc', 'Hạng mục')}</label>
           <select value={form.hang_muc} onChange={(e) => setF('hang_muc', e.target.value)}>{HANG_MUC.map((h) => <option key={h} value={h}>{h}</option>)}</select>
         </div>
       </div>
       <div className="row">
-        <div className="field"><label>Ngày yêu cầu</label><input type="date" value={form.request_date} onChange={(e) => setF('request_date', e.target.value)} /></div>
-        <div className="field"><label>Cần trước ngày</label><input type="date" value={form.expected_date} onChange={(e) => setF('expected_date', e.target.value)} /></div>
-        <div className="field"><label>Điểm nhận</label>
+        <div className="field"><label>{L('requests.field.ngay_yeu_cau', 'Ngày yêu cầu')}</label><input type="date" value={form.request_date} onChange={(e) => setF('request_date', e.target.value)} /></div>
+        <div className="field"><label>{L('requests.field.can_truoc_ngay', 'Cần trước ngày')}</label><input type="date" value={form.expected_date} onChange={(e) => setF('expected_date', e.target.value)} /></div>
+        <div className="field"><label>{L('requests.field.diem_nhan', 'Điểm nhận')}</label>
           <select value={diemCustom ? '__c' : form.receiving_point} onChange={(e) => {
             if (e.target.value === '__c') { setDiemCustom(true); setF('receiving_point', ''); }
             else { setDiemCustom(false); setF('receiving_point', e.target.value); }
@@ -176,11 +193,20 @@ function RequestForm({ onClose, onSaved }) {
         </div>
       </div>
       {diemCustom && <div className="field"><input placeholder="Nhập điểm nhận" value={form.receiving_point} onChange={(e) => setF('receiving_point', e.target.value)} /></div>}
-      <div className="field"><label>Ghi chú chung</label><input value={form.note} onChange={(e) => setF('note', e.target.value)} /></div>
+      <div className="field"><label>{L('requests.field.ghi_chu_chung', 'Ghi chú chung')}</label><input value={form.note} onChange={(e) => setF('note', e.target.value)} /></div>
 
-      <label>Danh sách hàng cần mua</label>
+      <label>{L('requests.field.danh_sach_hang', 'Danh sách hàng cần mua')}</label>
       <div className="table-wrap" style={{ marginBottom: 8 }}>
-        <table><thead><tr><th>Loại HH</th><th>Tên hàng</th><th>Mô tả</th><th>SL</th><th>ĐVT</th><th>Ngân sách</th><th>NCC đề xuất</th><th></th></tr></thead>
+        <table><thead><tr>
+          <th>{L('requests.form_col.loai_hh', 'Loại HH')}</th>
+          <th>{L('requests.form_col.ten_hang', 'Tên hàng')}</th>
+          <th>{L('requests.form_col.mo_ta', 'Mô tả')}</th>
+          <th>{L('requests.form_col.sl', 'SL')}</th>
+          <th>{L('requests.form_col.dvt', 'ĐVT')}</th>
+          <th>{L('requests.form_col.ngan_sach', 'Ngân sách')}</th>
+          <th>{L('requests.form_col.ncc_de_xuat', 'NCC đề xuất')}</th>
+          <th></th>
+        </tr></thead>
           <tbody>
             {items.map((it, i) => (
               <tr key={i}>
