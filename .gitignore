@@ -6,3 +6,4 @@ admin/spa.html
 *.log
 .DS_Store
 dist/
+secrets/
