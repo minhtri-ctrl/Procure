@@ -23,7 +23,9 @@ import importRoutes from './routes/import.js';
 import notificationsRoutes from './routes/notifications.js';
 import suppliersImportRoutes from './routes/suppliersImport.js';
 import backupRoutes from './routes/backup.js';
+import demoRoutes from './routes/demo.js';
 import { scheduleBackupSync } from './lib/backupSync.js';
+import { scheduleOrderAutomation } from './lib/orderAutomation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -32,6 +34,11 @@ app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'procureos', time: new Date().toISOString() }));
+
+if (config.demoMode) {
+  console.log('[server] DEMO_MODE=1 - dùng dữ liệu mẫu, không cần MySQL.');
+  app.use('/api', demoRoutes);
+} else {
 
 // Auth
 app.use('/api/auth', authRoutes);
@@ -78,6 +85,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/import', importRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/backup', backupRoutes);
+}
 
 // Phục vụ admin build (SPA) từ server/webui.
 // File entry được lưu dưới dạng spa.tpl (KHÔNG phải .html) để deploy runner của
@@ -99,10 +107,15 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.sqlMessage || err.message || 'Lỗi máy chủ' });
 });
 
-initDb()
+const boot = config.demoMode ? Promise.resolve() : initDb();
+
+boot
   .then(() => {
     app.listen(config.port, () => console.log(`[server] ProcureOS chạy tại cổng ${config.port}`));
-    scheduleBackupSync();
+    if (!config.demoMode) {
+      scheduleBackupSync();
+      scheduleOrderAutomation();
+    }
   })
   .catch((e) => {
     console.error('[server] Không khởi tạo được DB:', e.message);

@@ -14,7 +14,10 @@ export default function Dashboard() {
   if (err) return <><Top /><div className="content"><div className="error">{err}</div></div></>;
   if (!d) return <><Top /><div className="content center-msg">Đang tải…</div></>;
 
-  const maxTeam = Math.max(1, ...d.by_team.map((t) => Number(t.spend)));
+  const byTeam = Array.isArray(d.by_team) ? d.by_team : [];
+  const byStatus = Array.isArray(d.by_status) ? d.by_status : [];
+  const recent = Array.isArray(d.recent) ? d.recent : [];
+  const maxTeam = Math.max(1, ...byTeam.map((t) => Number(t.spend)));
   return (
     <>
       <Top />
@@ -29,7 +32,7 @@ export default function Dashboard() {
         <div className="grid cols-2" style={{ marginTop: 16 }}>
           <div className="card">
             <h3 style={{ marginTop: 0 }}>Đơn theo trạng thái</h3>
-            {d.by_status.map((s) => (
+            {byStatus.map((s) => (
               <div key={s.status} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
                 <StatusBadge code={s.status} />
                 <strong>{fmtNum(s.count)}</strong>
@@ -38,7 +41,7 @@ export default function Dashboard() {
           </div>
           <div className="card">
             <h3 style={{ marginTop: 0 }}>Chi tiêu theo Team</h3>
-            {d.by_team.map((t, i) => (
+            {byTeam.map((t, i) => (
               <div key={i} style={{ padding: '5px 0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
                   <span>{t.team || '(không rõ)'}</span><span className="muted">{fmtVND(t.spend)}</span>
@@ -57,7 +60,7 @@ export default function Dashboard() {
             <table>
               <thead><tr><th>Mã đơn</th><th>Dự án</th><th>NCC</th><th>Trạng thái</th><th>Giá trị</th></tr></thead>
               <tbody>
-                {d.recent.map((o) => (
+                {recent.map((o) => (
                   <tr key={o.order_code}>
                     <td><strong>{o.order_code}</strong></td>
                     <td>{o.project_name}</td>

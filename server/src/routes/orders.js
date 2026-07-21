@@ -6,6 +6,7 @@ import { wrap, pick } from '../util.js';
 import { nextOrderCode, nextItemCode } from '../lib/codes.js';
 import { normalizeLineStatus, LINE_STATUS_CODES } from '../lib/lineStatus.js';
 import { createNotification } from '../lib/notify.js';
+import { runAutomationSweep, runOrderAutomation } from '../lib/orderAutomation.js';
 
 const router = Router();
 router.use(authRequired);
@@ -71,7 +72,15 @@ router.get('/', wrap(async (req, res) => {
   if (supplier_id) { where.push('o.supplier_id = ?'); params.push(supplier_id); }
   const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const rows = await query(
-    `SELECT o.*, t.name AS team_name, s.name AS supplier_name, w.name AS status_name, w.color AS status_color,
+    `SELECT o.*, t.name AS team_name,
+            COALESCE(
+              NULLIF((SELECT GROUP_CONCAT(DISTINCT line_supplier.name ORDER BY line_supplier.name SEPARATOR ', ')
+                      FROM order_items line_item
+                      JOIN suppliers line_supplier ON line_supplier.id = line_item.supplier_id
+                      WHERE line_item.order_id = o.id), ''),
+              s.name
+            ) AS supplier_name,
+            w.name AS status_name, w.color AS status_color,
             (SELECT COUNT(*) FROM order_items i WHERE i.order_id = o.id) AS item_count
      FROM orders o
      LEFT JOIN teams t ON t.id = o.team_id
@@ -302,8 +311,18 @@ router.patch('/:id/status', wrap(async (req, res) => {
     if (status === 'warehoused') await conn.query('UPDATE orders SET warehouse_status = ? WHERE id = ?', ['Đã nhập kho', req.params.id]);
     await logStatus(conn, req.params.id, ord.status, status, req.user.email, note);
     await conn.commit();
-    res.json({ ok: true });
+    let automation;
+    try {
+      automation = await runOrderAutomation(req.params.id, { fromStatus: ord.status, toStatus: status, actorEmail: req.user.email });
+    } catch (e) {
+      automation = { error: e.message };
+    }
+    res.json({ ok: true, automation });
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+}));
+
+router.post('/automation/run', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
+  res.json(await runAutomationSweep());
 }));
 
 router.get('/:id/history', wrap(async (req, res) => {
@@ -379,7 +398,13 @@ router.post('/:id/quote-response', wrap(async (req, res) => {
       }, conn);
     }
     await conn.commit();
-    res.json({ ok: true, status: newStatus });
+    let automation;
+    try {
+      automation = await runOrderAutomation(ord.id, { fromStatus: ord.status, toStatus: newStatus, actorEmail: req.user.email });
+    } catch (e) {
+      automation = { error: e.message };
+    }
+    res.json({ ok: true, status: newStatus, automation });
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
 }));
 

@@ -15,7 +15,7 @@ const TPL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 // Quy tắc auto-create (bám ProcureOS_Automation.js).
 const INVALID_MASTER_CONTRACT = ['', 'Chọn Normal sourcing', 'Normal sourcing', 'N/A', 'n/a'];
 const MIN_VALUE_AUTO_DOC = 20000000;
-const AUTO_DOC_STATUSES = ['waiting', 'in_progress', 'quoted', 'ordered', 'received'];
+const AUTO_DOC_STATUSES = ['waiting', 'in_progress', 'quoted', 'confirmed', 'ordered', 'received', 'warehoused', 'documented'];
 
 // Thông tin công ty (Bên A) — cấu hình qua trang Cấu hình công ty (settings.company_info), không hard-code.
 async function getCompanyInfo() {
@@ -117,7 +117,7 @@ function buildDocument({ type, contractNo, order, supplier, items, subtotal, vat
   </body></html>`;
 }
 
-async function createFromOrder(orderId, forcedType) {
+export async function createFromOrder(orderId, forcedType) {
   const [order] = await query(
     `SELECT o.*, t.code AS team_code FROM orders o LEFT JOIN teams t ON t.id=o.team_id WHERE o.id = ?`, [orderId]);
   if (!order) throw Object.assign(new Error('Không tìm thấy đơn hàng'), { status: 404 });
