@@ -22,6 +22,10 @@ export default function NotificationBell() {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
+  }, []);
 
   const toggle = () => { const n = !open; setOpen(n); if (n) loadList(); };
 
@@ -33,7 +37,7 @@ export default function NotificationBell() {
   const markAll = async () => { await api.post('/notifications/read-all'); loadList(); loadCount(); };
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div ref={ref} className="notification-bell">
       <button className="btn-sm" onClick={toggle} title="Thông báo" style={{ position: 'relative' }}>
         🔔
         {unread > 0 && (
@@ -43,7 +47,7 @@ export default function NotificationBell() {
         )}
       </button>
       {open && (
-        <div style={{ position: 'absolute', bottom: '110%', left: 0, width: 340, maxHeight: 420, overflowY: 'auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 30px rgba(0,0,0,.18)', zIndex: 1000 }}>
+        <div className="notification-panel" role="dialog" aria-label="Thông báo">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: '#fff' }}>
             <strong>Thông báo</strong>
             {items.some((i) => !i.is_read) && <button className="btn-sm" onClick={markAll}>Đọc tất cả</button>}
@@ -68,6 +72,7 @@ export default function NotificationBell() {
               </div>
             </div>
           ))}
+          <div className="notification-footer">{items.length ? `${items.length} thông báo gần nhất` : 'Bạn đã đọc hết thông báo'}</div>
         </div>
       )}
     </div>

@@ -142,6 +142,15 @@ const MIGRATIONS = [
   // settings.value là TEXT (giới hạn 64KB) làm base64 mẫu .docx (~350-490KB) bị cắt cụt -> "Corrupted zip"
   // khi tải hợp đồng .docx. Mở rộng sang LONGTEXT để chứa trọn file mẫu.
   "ALTER TABLE settings MODIFY value LONGTEXT NULL",
+  "ALTER TABLE orders ADD COLUMN qdnb_link VARCHAR(1000) NULL",
+  `CREATE TABLE IF NOT EXISTS order_suppliers (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, order_id BIGINT UNSIGNED NOT NULL, supplier_id BIGINT UNSIGNED NOT NULL,
+    payment_method VARCHAR(64) NULL, payment_time VARCHAR(190) NULL, contract_no VARCHAR(100) NULL, vendor_link VARCHAR(1000) NULL, custom_fields LONGTEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id), UNIQUE KEY uq_order_suppliers (order_id, supplier_id), KEY idx_order_suppliers_supplier (supplier_id),
+    CONSTRAINT fk_order_suppliers_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    CONSTRAINT fk_order_suppliers_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 ];
 
 async function runMigrations() {

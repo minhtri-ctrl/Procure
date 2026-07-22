@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS orders (
   contract_no      VARCHAR(100) NULL,           -- SO_HOP_DONG
   payment_method   VARCHAR(190) NULL,           -- HINH_THUC_TT
   payment_term     VARCHAR(190) NULL,           -- THOI_HAN_TT
+  qdnb_link        VARCHAR(1000) NULL,
   total_amount     DECIMAL(18,2) NOT NULL DEFAULT 0, -- tổng TONG_TIEN các dòng
   warehouse_status VARCHAR(100) NULL,           -- NHAP_KHO
   po_no            VARCHAR(100) NULL,           -- PO_NO (sinh khi gửi xác nhận NCC)
@@ -147,6 +148,23 @@ CREATE TABLE IF NOT EXISTS orders (
   KEY idx_orders_team (team_id),
   KEY idx_orders_supplier (supplier_id),
   KEY idx_orders_requester (requester_email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS order_suppliers (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  order_id BIGINT UNSIGNED NOT NULL,
+  supplier_id BIGINT UNSIGNED NOT NULL,
+  payment_method VARCHAR(64) NULL,
+  payment_time VARCHAR(190) NULL,
+  contract_no VARCHAR(100) NULL,
+  vendor_link VARCHAR(1000) NULL,
+  custom_fields LONGTEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id), UNIQUE KEY uq_order_suppliers (order_id, supplier_id),
+  KEY idx_order_suppliers_supplier (supplier_id),
+  CONSTRAINT fk_order_suppliers_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  CONSTRAINT fk_order_suppliers_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------

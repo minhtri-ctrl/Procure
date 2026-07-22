@@ -20,7 +20,7 @@ function scopeClause(user, alias = 'o') {
 
 const HEADER_FIELDS = [
   'order_code', 'requester_email', 'requester_name', 'team_id', 'supplier_id', 'project_name',
-  'pm', 'status', 'status_raw', 'hang_muc', 'qdnb_tbkm', 'request_date', 'expected_date', 'actual_date', 'handover_date',
+  'pm', 'status', 'status_raw', 'hang_muc', 'qdnb_tbkm', 'qdnb_link', 'request_date', 'expected_date', 'actual_date', 'handover_date',
   'receiving_point', 'pr_no', 'contract_no', 'payment_method', 'payment_term', 'warehouse_status', 'note', 'custom_fields',
 ];
 function normHeader(h) {
@@ -44,6 +44,32 @@ function computeLine(it) {
   return { thanh_tien: thanhTien, tien_thue: tienThue, line_total: thanhTien + tienThue };
 }
 
+function deriveStatus(items) {
+  const active = items.map((item) => normalizeLineStatus(item.progress)).filter((code) => code !== 'huy');
+  if (!items.length) return null;
+  if (!active.length) return 'cancelled';
+  if (active.every((code) => ['da_nhan', 'da_nhap_kho', 'da_giao'].includes(code))) return 'received';
+  if (active.some((code) => code === 'cho_bao_gia')) return 'in_progress';
+  return 'ordered';
+}
+
+async function syncOrderStatusFromItems(orderId, actorEmail = 'automation') {
+  const items = await query('SELECT progress FROM order_items WHERE order_id = ?', [orderId]);
+  const derived = deriveStatus(items);
+  if (!derived) return { changed: false, reason: 'no_items' };
+  const [order] = await query('SELECT status FROM orders WHERE id = ?', [orderId]);
+  if (!order || order.status === derived) return { changed: false, status: order?.status || null };
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('UPDATE orders SET status = ? WHERE id = ?', [derived, orderId]);
+    await logStatus(conn, orderId, order.status, derived, actorEmail, 'Tự đồng bộ từ tiến trình dòng hàng');
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+  await runOrderAutomation(orderId, { fromStatus: order.status, toStatus: derived, actorEmail });
+  return { changed: true, from: order.status, to: derived };
+}
+
 async function teamCodeOf(teamId) {
   if (!teamId) return '';
   const [t] = await query('SELECT code FROM teams WHERE id = ?', [teamId]);
@@ -59,7 +85,7 @@ async function logStatus(conn, orderId, from, to, by, note) {
 
 // LIST
 router.get('/', wrap(async (req, res) => {
-  const { q, status, team_id, supplier_id, page = 1, limit = 50 } = req.query;
+  const { q, status, team_id, supplier_id, date_from, date_to, date_field = 'request_date', page = 1, limit = 50 } = req.query;
   const lim = Math.min(Number(limit) || 50, 200);
   const off = (Math.max(Number(page) || 1, 1) - 1) * lim;
   const where = ['o.deleted_at IS NULL'];
@@ -70,6 +96,9 @@ router.get('/', wrap(async (req, res) => {
   if (status) { where.push('o.status = ?'); params.push(status); }
   if (team_id) { where.push('o.team_id = ?'); params.push(team_id); }
   if (supplier_id) { where.push('o.supplier_id = ?'); params.push(supplier_id); }
+  const dateColumn = { request_date: 'o.request_date', expected_date: 'o.expected_date', created_at: 'o.created_at' }[date_field] || 'o.request_date';
+  if (date_from) { where.push(`${dateColumn} >= ?`); params.push(date_from); }
+  if (date_to) { where.push(`${dateColumn} < DATE_ADD(?, INTERVAL 1 DAY)`); params.push(date_to); }
   const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const rows = await query(
     `SELECT o.*, t.name AS team_name,
@@ -229,8 +258,31 @@ router.get('/:id', wrap(async (req, res) => {
   const history = await query('SELECT * FROM order_status_history WHERE order_id = ? ORDER BY id', [req.params.id]);
   let custom = {};
   try { custom = rows[0].custom_fields ? JSON.parse(rows[0].custom_fields) : {}; } catch { custom = {}; }
-  res.json({ ...rows[0], custom_fields: custom, items, history });
+  res.json({ ...rows[0], custom_fields: custom, items, order_suppliers: await loadOrderSuppliers(req.params.id), history });
 }));
+
+async function loadOrderSuppliers(orderId) {
+  const links = await query(
+    `SELECT os.*, s.name AS supplier_name, s.contact_name, s.contact_email FROM order_suppliers os
+     JOIN suppliers s ON s.id = os.supplier_id WHERE os.order_id = ? ORDER BY s.name`, [orderId]
+  );
+  const lineOnly = await query(
+    `SELECT DISTINCT i.supplier_id, s.name AS supplier_name, s.contact_name, s.contact_email FROM order_items i
+     JOIN suppliers s ON s.id = i.supplier_id WHERE i.order_id = ? AND i.supplier_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM order_suppliers os WHERE os.order_id = i.order_id AND os.supplier_id = i.supplier_id)`, [orderId]
+  );
+  const headerOnly = await query(
+    `SELECT o.supplier_id, s.name AS supplier_name, s.contact_name, s.contact_email FROM orders o
+     JOIN suppliers s ON s.id = o.supplier_id WHERE o.id = ? AND o.supplier_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM order_suppliers os WHERE os.order_id = o.id AND os.supplier_id = o.supplier_id)
+     AND NOT EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id AND i.supplier_id = o.supplier_id)`, [orderId]
+  );
+  return [...links, ...lineOnly, ...headerOnly].map((row) => {
+    let custom_fields = {};
+    try { custom_fields = row.custom_fields ? JSON.parse(row.custom_fields) : {}; } catch { /* optional legacy data */ }
+    return { ...row, custom_fields };
+  });
+}
 
 // CREATE order + items (transaction) — sinh MA_DH & MA_HANG chuẩn.
 router.post('/', wrap(async (req, res) => {
@@ -284,6 +336,25 @@ router.put('/:id', requireRole('admin', 'purchasing'), wrap(async (req, res) => 
     const clause = Object.keys(header).map((k) => `\`${k}\` = ?`).join(', ');
     await query(`UPDATE orders SET ${clause} WHERE id = ?`, [...Object.values(header), req.params.id]);
   }
+  res.json({ ok: true });
+}));
+
+router.get('/:id/suppliers', wrap(async (req, res) => {
+  res.json({ data: await loadOrderSuppliers(req.params.id) });
+}));
+
+router.put('/:id/suppliers/:supplierId', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
+  const supplierId = Number(req.params.supplierId);
+  const [supplier] = await query('SELECT id FROM suppliers WHERE id = ?', [supplierId]);
+  if (!supplier) return res.status(404).json({ error: 'Không tìm thấy nhà cung cấp' });
+  const fields = pick(req.body || {}, ['payment_method', 'payment_time', 'contract_no', 'vendor_link', 'custom_fields']);
+  if (fields.custom_fields && typeof fields.custom_fields === 'object') fields.custom_fields = JSON.stringify(fields.custom_fields);
+  const cols = Object.keys(fields);
+  const updates = cols.length ? cols.map((c) => `\`${c}\` = VALUES(\`${c}\`)`).join(', ') : 'supplier_id = VALUES(supplier_id)';
+  await query(
+    `INSERT INTO order_suppliers (order_id, supplier_id${cols.length ? `, ${cols.map((c) => `\`${c}\``).join(', ')}` : ''}) VALUES (?, ?${cols.map(() => ', ?').join('')}) ON DUPLICATE KEY UPDATE ${updates}`,
+    [req.params.id, supplierId, ...cols.map((c) => fields[c])]
+  );
   res.json({ ok: true });
 }));
 
@@ -443,6 +514,7 @@ router.post('/:id/restore', requireRole('admin', 'pm'), wrap(async (req, res) =>
 // --- Line items (buyer nhập giá/NCC/BG…) ---
 router.post('/:id/items', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
   const it = pick(req.body, ITEM_FIELDS);
+  if (!String(it.item_name || '').trim()) return res.status(400).json({ error: 'Tên hàng là bắt buộc' });
   Object.assign(it, computeLine(it));
   const ic = Object.keys(it);
   const r = await query(
@@ -450,7 +522,7 @@ router.post('/:id/items', requireRole('admin', 'purchasing'), wrap(async (req, r
     [req.params.id, ...ic.map((c) => it[c])]
   );
   await recalcTotal(req.params.id);
-  res.status(201).json({ id: r.insertId });
+  res.status(201).json({ id: r.insertId, sync: await syncOrderStatusFromItems(req.params.id, req.user.email) });
 }));
 
 router.put('/items/:itemId', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
@@ -462,20 +534,23 @@ router.put('/items/:itemId', requireRole('admin', 'purchasing'), wrap(async (req
   }
   const row = await getItem(req.params.itemId);
   if (row) await recalcTotal(row.order_id);
-  res.json({ ok: true });
+  res.json({ ok: true, sync: row ? await syncOrderStatusFromItems(row.order_id, req.user.email) : null });
 }));
 
 router.delete('/items/:itemId', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
   const row = await getItem(req.params.itemId);
   await query('DELETE FROM order_items WHERE id = ?', [req.params.itemId]);
   if (row) await recalcTotal(row.order_id);
-  res.json({ ok: true });
+  res.json({ ok: true, sync: row ? await syncOrderStatusFromItems(row.order_id, req.user.email) : null });
 }));
 
 // Cập nhật tiến trình theo TỪNG dòng hàng.
 router.patch('/items/:itemId/progress', requireRole('admin', 'purchasing', 'warehouse'), wrap(async (req, res) => {
-  await query('UPDATE order_items SET progress = ? WHERE id = ?', [req.body.progress || '', req.params.itemId]);
-  res.json({ ok: true });
+  const progress = normalizeLineStatus(req.body.progress);
+  const row = await getItem(req.params.itemId);
+  if (!row) return res.status(404).json({ error: 'Không tìm thấy dòng hàng' });
+  await query('UPDATE order_items SET progress = ? WHERE id = ?', [progress, req.params.itemId]);
+  res.json({ ok: true, sync: await syncOrderStatusFromItems(row.order_id, req.user.email) });
 }));
 
 // Đẩy dòng hàng sang Danh mục SP (sinh MA_HANG) -> chờ nhập kho.
@@ -495,13 +570,15 @@ router.post('/items/:itemId/to-catalog', requireRole('admin', 'purchasing'), wra
   );
   await query('UPDATE order_items SET item_code = ?, in_catalog = 1, nhap_kho = ?, progress = ? WHERE id = ?',
     [code, 'Chờ nhập kho', 'Chờ nhập kho', req.params.itemId]);
-  res.json({ ok: true, item_code: code });
+  res.json({ ok: true, item_code: code, sync: await syncOrderStatusFromItems(it.order_id, req.user.email) });
 }));
 
 // Bàn giao trực tiếp cho Requester (không nhập kho).
 router.post('/items/:itemId/handover', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
-  await query('UPDATE order_items SET progress = ?, nhap_kho = ? WHERE id = ?', ['Đã bàn giao', 'Đã bàn giao', req.params.itemId]);
-  res.json({ ok: true });
+  const it = await getItem(req.params.itemId);
+  if (!it) return res.status(404).json({ error: 'Không tìm thấy dòng hàng' });
+  await query('UPDATE order_items SET progress = ?, nhap_kho = ? WHERE id = ?', ['da_giao', 'Đã bàn giao', req.params.itemId]);
+  res.json({ ok: true, sync: await syncOrderStatusFromItems(it.order_id, req.user.email) });
 }));
 
 async function getItem(id) { const [r] = await query('SELECT * FROM order_items WHERE id = ?', [id]); return r; }

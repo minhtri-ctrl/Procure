@@ -19,7 +19,7 @@ a { color: inherit; text-decoration: none; }
 
 /* Layout */
 .layout { display: flex; min-height: 100vh; }
-.sidebar { width: 240px; background: var(--sidebar); color: #cdd6e3; display: flex; flex-direction: column; position: fixed; height: 100vh; transition: width .15s; overflow: hidden; }
+.sidebar { width: 240px; background: var(--sidebar); color: #cdd6e3; display: flex; flex-direction: column; position: fixed; height: 100vh; transition: width .15s; overflow: visible; z-index: 20; }
 .sidebar .brand-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 14px 22px; }
 .sidebar .brand { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: .5px; white-space: nowrap; }
 .sidebar .brand span { color: var(--primary); }
@@ -128,3 +128,7 @@ td.c, th.c, .c { text-align: center; }
 .email-preview { border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: #fff; margin-top: 12px; }
 .email-meta { font-size: 13px; color: #45505f; margin-bottom: 10px; }
 .email-meta b { color: var(--text); }
+.notification-bell { position: relative; z-index: 100; }
+.notification-panel { position: absolute; bottom: calc(100% + 10px); left: 0; width: min(360px, calc(100vw - 32px)); max-height: min(480px, calc(100vh - 110px)); overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 16px 42px rgba(15,23,42,.25); z-index: 2000; }
+.notification-footer { padding: 9px 12px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); background: #fff; }
+@media (max-width: 720px) { .sidebar { width: 64px; } .main, .layout.sidebar-collapsed .main { margin-left: 64px; } .sidebar:not(.collapsed) .brand, .sidebar:not(.collapsed) .grp-hd, .sidebar:not(.collapsed) .user > div:not(:first-child), .sidebar:not(.collapsed) .user > button { display: none; } .sidebar:not(.collapsed) nav a { justify-content: center; padding: 11px 0; font-size: 18px; } .content { padding: 16px; } .topbar { padding: 14px 16px; } .toolbar > * { flex: 1 1 140px; } .notification-panel { position: fixed; left: 12px; bottom: 12px; width: calc(100vw - 24px); max-height: calc(100vh - 24px); } }

@@ -18,6 +18,7 @@ export default function OrderDetail() {
   const [teams, setTeams] = useState([]);
   const [editHdr, setEditHdr] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [supplierEdit, setSupplierEdit] = useState(null);
   const [newStatus, setNewStatus] = useState('');
   const [note, setNote] = useState('');
   const [err, setErr] = useState('');
@@ -106,6 +107,7 @@ export default function OrderDetail() {
             <Info label={L('order_detail.info.ngay_nhan', 'Ngày nhận')} value={fmtDate(o.expected_date)} />
             <Info label={L('order_detail.info.pm', 'PM')} value={o.pm} />
             <Info label={L('order_detail.info.so_qdnb', 'Số QĐNB')} value={o.qdnb_tbkm} />
+            <Info label="Link QĐNB" value={o.qdnb_link ? <a href={o.qdnb_link} target="_blank" rel="noreferrer">Mở liên kết</a> : ''} />
             <Info label={L('order_detail.info.tong_gia_tri', 'Tổng giá trị')} value={fmtVND(o.total_amount)} />
             {Object.entries(o.custom_fields || {}).map(([k, v]) => <Info key={k} label={k} value={String(v)} />)}
           </div>
@@ -153,7 +155,14 @@ export default function OrderDetail() {
         </div>
 
         <div className="card" style={{ marginTop: 16 }}>
-          <h3 style={{ marginTop: 0 }}>Chi tiết hàng ({o.items.length})</h3>
+          <h3 style={{ marginTop: 0 }}>Nhà cung cấp theo đơn</h3>
+          {(o.order_suppliers || []).length ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {o.order_suppliers.map((s) => <button key={s.supplier_id} className="btn-sm" onClick={() => setSupplierEdit(s)}>{s.supplier_name}</button>)}
+          </div> : <div className="muted">Chưa có NCC từ các dòng hàng. Chọn NCC khi thêm/sửa dòng hàng để quản lý điều khoản theo đơn.</div>}
+        </div>
+
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><h3 style={{ marginTop: 0 }}>Chi tiết hàng ({o.items.length})</h3>{canWrite && <button className="btn-primary" onClick={() => setEditing({})}>+ Thêm dòng hàng</button>}</div>
           <div className="table-wrap" style={{ border: 'none' }}>
             <table>
               <thead><tr>
@@ -201,7 +210,8 @@ export default function OrderDetail() {
         </div>
       </div>
 
-      {editing && <LineEdit item={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+      {editing && <LineEdit item={editing} orderId={o.id} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+      {supplierEdit && <OrderSupplierEdit orderId={o.id} supplier={supplierEdit} onClose={() => setSupplierEdit(null)} onSaved={() => { setSupplierEdit(null); load(); }} />}
       {editHdr && <EditOrder order={o} teams={teams} onClose={() => setEditHdr(false)} onSaved={() => { setEditHdr(false); load(); }} />}
     </>
   );
@@ -214,7 +224,7 @@ function EditOrder({ order, teams, onClose, onSaved }) {
     project_name: order.project_name || '', receiving_point: order.receiving_point || '', hang_muc: order.hang_muc || '',
     qdnb_tbkm: order.qdnb_tbkm || '', pm: order.pm || '', team_id: order.team_id || '', supplier_id: order.supplier_id || '',
     request_date: (order.request_date || '').slice(0, 10), expected_date: (order.expected_date || '').slice(0, 10),
-    payment_method: order.payment_method || '', payment_term: order.payment_term || '', note: order.note || '',
+    qdnb_link: order.qdnb_link || '', note: order.note || '',
   });
   const [cf, setCf] = useState(Object.entries(order.custom_fields || {}).map(([k, v]) => ({ k, v })));
   const [busy, setBusy] = useState(false);
@@ -249,10 +259,7 @@ function EditOrder({ order, teams, onClose, onSaved }) {
         <div className="field"><label>{L('order_detail.field.so_qdnb', 'Số QĐNB')}</label><input value={f.qdnb_tbkm} onChange={(e) => set('qdnb_tbkm', e.target.value)} /></div>
         <div className="field"><label>{L('order_detail.field.pm', 'PM')}</label><input value={f.pm} onChange={(e) => set('pm', e.target.value)} /></div>
       </div>
-      <div className="row">
-        <div className="field"><label>{L('order_detail.field.hinh_thuc_tt', 'Hình thức TT')}</label><input value={f.payment_method} onChange={(e) => set('payment_method', e.target.value)} /></div>
-        <div className="field"><label>{L('order_detail.field.thoi_han_tt', 'Thời hạn TT')}</label><input value={f.payment_term} onChange={(e) => set('payment_term', e.target.value)} /></div>
-      </div>
+      <div className="field"><label>Link QĐNB</label><input type="url" value={f.qdnb_link} onChange={(e) => set('qdnb_link', e.target.value)} placeholder="https://..." /></div>
       <div className="field"><label>{L('order_detail.field.ghi_chu', 'Ghi chú')}</label><input value={f.note} onChange={(e) => set('note', e.target.value)} /></div>
 
       <label>{L('order_detail.field.custom_fields', 'Trường tùy chỉnh (thêm/bớt tự do)')}</label>
@@ -279,7 +286,7 @@ function Info({ label, value }) {
 }
 
 // Buyer sửa dòng: giá, SL, VAT, NCC, master, số PR, thiết kế, upload báo giá.
-function LineEdit({ item, onClose, onSaved }) {
+function LineEdit({ item, orderId, onClose, onSaved }) {
   const { L } = useMeta();
   const [f, setF] = useState({
     loai_hh: item.loai_hh || 'Vật phẩm', item_name: item.item_name || '', description: item.description || '',
@@ -297,18 +304,20 @@ function LineEdit({ item, onClose, onSaved }) {
   const save = async () => {
     setBusy(true); setErr('');
     try {
-      await api.put(`/orders/items/${item.id}`, {
+      const payload = {
         loai_hh: f.loai_hh, item_name: f.item_name, description: f.description, unit: f.unit,
         quantity: Number(f.quantity || 0), unit_price: Number(f.unit_price || 0), vat_rate: Number(f.vatPct || 0) / 100,
         supplier_id: f.supplier_id || null, master_contract: f.master_contract, so_pr: f.so_pr, design_link: f.design_link, note: f.note,
-      });
-      if (bg) await api.post(`/uploads/order-quote/${item.id}`, { data: bg, filename: 'bao-gia' });
+      };
+      if (!payload.item_name.trim()) throw new Error('Tên hàng là bắt buộc');
+      const result = item.id ? await api.put(`/orders/items/${item.id}`, payload) : await api.post(`/orders/${orderId}/items`, payload);
+      if (bg && item.id) await api.post(`/uploads/order-quote/${item.id}`, { data: bg, filename: 'bao-gia' });
       onSaved();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
 
   return (
-    <Modal title={`Sửa dòng: ${item.item_code || item.item_name}`} onClose={onClose} onSubmit={save} busy={busy}>
+    <Modal title={item.id ? `Sửa dòng: ${item.item_code || item.item_name}` : 'Thêm dòng hàng'} onClose={onClose} onSubmit={save} busy={busy}>
       <div className="row">
         <div className="field"><label>{L('order_detail.line.loai_hh', 'Loại HH')}</label><select value={f.loai_hh} onChange={(e) => setF({ ...f, loai_hh: e.target.value })}>{LOAI_HH.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
         <div className="field"><label>{L('order_detail.line.dvt', 'ĐVT')}</label><input value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} /></div>
@@ -338,4 +347,28 @@ function LineEdit({ item, onClose, onSaved }) {
       {err && <div className="error">{err}</div>}
     </Modal>
   );
+}
+
+function OrderSupplierEdit({ orderId, supplier, onClose, onSaved }) {
+  const [f, setF] = useState({
+    payment_method: supplier.payment_method || '', payment_time: supplier.payment_time || '',
+    contract_no: supplier.contract_no || '', vendor_link: supplier.vendor_link || '',
+  });
+  const [custom, setCustom] = useState(Object.entries(supplier.custom_fields || {}).map(([k, v]) => ({ k, v })));
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      const custom_fields = {}; custom.forEach(({ k, v }) => { if (k.trim()) custom_fields[k.trim()] = v; });
+      await api.put(`/orders/${orderId}/suppliers/${supplier.supplier_id}`, { ...f, custom_fields }); onSaved();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return <Modal title={`NCC theo đơn: ${supplier.supplier_name}`} onClose={onClose} onSubmit={save} busy={busy}>
+    <div className="field"><label>Hình thức thanh toán</label><select value={f.payment_method} onChange={(e) => setF({ ...f, payment_method: e.target.value })}><option value="">-- Chọn --</option>{['30-70', '50-50', '100', 'Thanh toán sau', 'Khác'].map((x) => <option key={x}>{x}</option>)}</select></div>
+    <div className="field"><label>Thời gian thanh toán</label><input value={f.payment_time} onChange={(e) => setF({ ...f, payment_time: e.target.value })} /></div>
+    <div className="field"><label>Số hợp đồng</label><input value={f.contract_no} onChange={(e) => setF({ ...f, contract_no: e.target.value })} /></div>
+    <div className="field"><label>Link Vendor</label><input type="url" value={f.vendor_link} onChange={(e) => setF({ ...f, vendor_link: e.target.value })} /></div>
+    <label>Trường tùy chỉnh</label>{custom.map((r, i) => <div className="row" key={i}><input placeholder="Tên" value={r.k} onChange={(e) => setCustom(custom.map((x, j) => j === i ? { ...x, k: e.target.value } : x))} /><input placeholder="Giá trị" value={r.v} onChange={(e) => setCustom(custom.map((x, j) => j === i ? { ...x, v: e.target.value } : x))} /><button type="button" className="btn-sm btn-danger" onClick={() => setCustom(custom.filter((_, j) => j !== i))}>×</button></div>)}
+    <button type="button" className="btn-sm" onClick={() => setCustom([...custom, { k: '', v: '' }])}>+ Thêm trường</button>{err && <div className="error">{err}</div>}
+  </Modal>;
 }

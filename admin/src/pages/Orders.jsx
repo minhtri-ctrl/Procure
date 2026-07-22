@@ -14,13 +14,20 @@ export default function Orders() {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
+  const [dateField, setDateField] = useState('request_date');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [err, setErr] = useState('');
   const nav = useNavigate();
 
   const load = () => {
-    api.get(`/orders?q=${encodeURIComponent(q)}&status=${status}&limit=100`).then((r) => setRows(r.data)).catch((e) => setErr(e.message));
+    const p = new URLSearchParams({ q, status, date_field: dateField, limit: '100' });
+    if (dateFrom) p.set('date_from', dateFrom); if (dateTo) p.set('date_to', dateTo);
+    api.get(`/orders?${p}`).then((r) => setRows(r.data || [])).catch((e) => setErr(e.message));
   };
-  useEffect(() => { load(); }, [q, status]);
+  useEffect(() => { load(); }, [q, status, dateField, dateFrom, dateTo]);
+  const clearFilters = () => { setQ(''); setStatus(''); setDateField('request_date'); setDateFrom(''); setDateTo(''); };
+  const hasDateFilter = dateFrom || dateTo;
 
   const download = async (format) => {
     const res = await fetch(`/api/orders/export?format=${format}`, { headers: { Authorization: `Bearer ${getToken()}` } });
@@ -44,12 +51,17 @@ export default function Orders() {
             <option value="">Tất cả trạng thái</option>
             {states.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
           </select>
+          <select style={{ width: 150 }} value={dateField} onChange={(e) => setDateField(e.target.value)}><option value="request_date">Ngày YC</option><option value="expected_date">Ngày nhận</option><option value="created_at">Ngày tạo</option></select>
+          <input type="date" aria-label="Từ ngày" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ width: 145 }} />
+          <input type="date" aria-label="Đến ngày" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ width: 145 }} />
+          {(q || status || hasDateFilter) && <button className="btn-sm" onClick={clearFilters}>Xóa lọc</button>}
           <div className="spacer" />
           <button onClick={() => download('xlsx')}>⬇ Excel</button>
           <button onClick={() => download('csv')}>⬇ CSV</button>
           {canWrite && <button className="btn-primary" onClick={() => nav('/orders/new')}>+ Tạo đơn</button>}
           {canPurge && <BulkDeleteButton entity="đơn hàng" countPath="/orders/count" deletePath="/orders" onDone={(n) => { alert(`Đã xóa ${n} đơn hàng`); load(); }} />}
         </div>
+        {hasDateFilter && <div className="muted" style={{ margin: '-8px 0 12px' }}>Đang lọc {dateField === 'request_date' ? 'Ngày YC' : dateField === 'expected_date' ? 'Ngày nhận' : 'Ngày tạo'}{dateFrom ? ` từ ${fmtDate(dateFrom)}` : ''}{dateTo ? ` đến ${fmtDate(dateTo)}` : ''}.</div>}
         {err && <div className="error">{err}</div>}
         <div className="table-wrap">
           <table>
