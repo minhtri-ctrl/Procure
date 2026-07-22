@@ -50,6 +50,10 @@ export default function OrderDetail() {
     try { await api.patch(`/orders/items/${itemId}/progress`, { progress: code }); load(); }
     catch (e) { setErr(e.message); }
   };
+  const deleteLine = async (itemId) => {
+    if (!confirm('Xóa dòng hàng này?')) return;
+    try { await api.del(`/orders/items/${itemId}`); setMsg('Đã xóa dòng hàng'); load(); } catch (e) { setErr(e.message); }
+  };
   const sendQuote = async () => {
     setErr(''); setMsg('');
     if (!confirm('Gửi báo giá để Requester xác nhận? Đơn sẽ chuyển sang "Chờ xác nhận báo giá".')) return;
@@ -157,7 +161,7 @@ export default function OrderDetail() {
         <div className="card" style={{ marginTop: 16 }}>
           <h3 style={{ marginTop: 0 }}>Nhà cung cấp theo đơn</h3>
           {(o.order_suppliers || []).length ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {o.order_suppliers.map((s) => <button key={s.supplier_id} className="btn-sm" onClick={() => setSupplierEdit(s)}>{s.supplier_name}</button>)}
+            {o.order_suppliers.map((s) => <button key={s.supplier_id} className="btn-sm" onClick={() => setSupplierEdit(s)}>{s.supplier_name} · {fmtVND(s.supplier_total)}</button>)}
           </div> : <div className="muted">Chưa có NCC từ các dòng hàng. Chọn NCC khi thêm/sửa dòng hàng để quản lý điều khoản theo đơn.</div>}
         </div>
 
@@ -174,12 +178,13 @@ export default function OrderDetail() {
                 <th>{L('order_detail.col.tong', 'Tổng')}</th>
                 <th>{L('order_detail.col.ncc', 'NCC')}</th>
                 <th>{L('order_detail.col.bg', 'BG')}</th>
+                <th>PR</th><th>Link thiết kế</th>
                 <th>{L('order_detail.col.tien_trinh_dong', 'Tiến trình dòng')}</th>
                 {canWrite && <th>{L('order_detail.col.xu_ly', 'Xử lý')}</th>}
               </tr></thead>
               <tbody>
                 {o.items.map((it) => (
-                  <tr key={it.id}>
+                  <tr key={it.id} onClick={() => setEditing(it)} style={{ cursor: canWrite ? 'pointer' : 'default' }}>
                     <td>{it.item_code || <span className="muted">chưa có</span>}</td>
                     <td>{it.loai_hh || '-'}</td>
                     <td>{it.item_name}</td>
@@ -188,18 +193,21 @@ export default function OrderDetail() {
                     <td className="r"><strong>{fmtVND(it.line_total)}</strong></td>
                     <td>{it.supplier_name || '-'}</td>
                     <td>{it.quotation_url ? <a href={it.quotation_url} target="_blank" rel="noreferrer">📎</a> : '-'}</td>
+                    <td>{it.so_pr || '-'}</td>
+                    <td>{it.design_link ? <a href={it.design_link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Mở</a> : '-'}</td>
                     <td>
                       {canWrite ? (
-                        <select value={normalizeLineStatus(it.progress)} onChange={(e) => setLineStatus(it.id, e.target.value)}>
+                        <select value={normalizeLineStatus(it.progress)} onClick={(e) => e.stopPropagation()} onChange={(e) => setLineStatus(it.id, e.target.value)}>
                           {LINE_STATUSES.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
                         </select>
                       ) : (LINE_STATUSES.find((s) => s.code === normalizeLineStatus(it.progress))?.name || '-')}
                     </td>
                     {canWrite && (
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <button className="btn-sm" onClick={() => setEditing(it)}>Sửa</button>{' '}
+                        <button className="btn-sm" onClick={(e) => { e.stopPropagation(); setEditing(it); }}>Sửa</button>{' '}
                         {!it.in_catalog && <button className="btn-sm" title="Đẩy sang Danh mục SP → sinh mã hàng, chờ nhập kho" onClick={() => toCatalog(it.id)}>→ Kho</button>}{' '}
-                        <button className="btn-sm" title="Bàn giao trực tiếp cho Requester" onClick={() => handover(it.id)}>Bàn giao</button>
+                        <button className="btn-sm" title="Bàn giao trực tiếp cho Requester" onClick={(e) => { e.stopPropagation(); handover(it.id); }}>Bàn giao</button>{' '}
+                        <button className="btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); deleteLine(it.id); }}>Xóa</button>
                       </td>
                     )}
                   </tr>
@@ -292,7 +300,7 @@ function LineEdit({ item, orderId, onClose, onSaved }) {
     loai_hh: item.loai_hh || 'Vật phẩm', item_name: item.item_name || '', description: item.description || '',
     quantity: item.quantity || 0, unit_price: item.unit_price || 0, vatPct: Math.round((Number(item.vat_rate) || 0) * 100),
     unit: item.unit || '', supplier_id: item.supplier_id || '', master_contract: item.master_contract || '',
-    so_pr: item.so_pr || '', design_link: item.design_link || '', note: item.note || '',
+    so_pr: item.so_pr || '', design_link: item.design_link || '', note: item.note || '', progress: normalizeLineStatus(item.progress),
   });
   const [bg, setBg] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -307,7 +315,7 @@ function LineEdit({ item, orderId, onClose, onSaved }) {
       const payload = {
         loai_hh: f.loai_hh, item_name: f.item_name, description: f.description, unit: f.unit,
         quantity: Number(f.quantity || 0), unit_price: Number(f.unit_price || 0), vat_rate: Number(f.vatPct || 0) / 100,
-        supplier_id: f.supplier_id || null, master_contract: f.master_contract, so_pr: f.so_pr, design_link: f.design_link, note: f.note,
+        supplier_id: f.supplier_id || null, master_contract: f.master_contract, so_pr: f.so_pr, design_link: f.design_link, note: f.note, progress: f.progress,
       };
       if (!payload.item_name.trim()) throw new Error('Tên hàng là bắt buộc');
       const result = item.id ? await api.put(`/orders/items/${item.id}`, payload) : await api.post(`/orders/${orderId}/items`, payload);
@@ -322,6 +330,7 @@ function LineEdit({ item, orderId, onClose, onSaved }) {
         <div className="field"><label>{L('order_detail.line.loai_hh', 'Loại HH')}</label><select value={f.loai_hh} onChange={(e) => setF({ ...f, loai_hh: e.target.value })}>{LOAI_HH.map((x) => <option key={x} value={x}>{x}</option>)}</select></div>
         <div className="field"><label>{L('order_detail.line.dvt', 'ĐVT')}</label><input value={f.unit} onChange={(e) => setF({ ...f, unit: e.target.value })} /></div>
       </div>
+      <div className="field"><label>Tiến trình dòng</label><select value={f.progress} onChange={(e) => setF({ ...f, progress: e.target.value })}>{LINE_STATUSES.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select></div>
       <div className="field"><label>{L('order_detail.line.ten_hang', 'Tên hàng')}</label><input value={f.item_name} onChange={(e) => setF({ ...f, item_name: e.target.value })} /></div>
       <div className="row">
         <div className="field"><label>{L('order_detail.line.so_luong', 'Số lượng')}</label><input type="number" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value })} /></div>
@@ -352,7 +361,7 @@ function LineEdit({ item, orderId, onClose, onSaved }) {
 function OrderSupplierEdit({ orderId, supplier, onClose, onSaved }) {
   const [f, setF] = useState({
     payment_method: supplier.payment_method || '', payment_time: supplier.payment_time || '',
-    contract_no: supplier.contract_no || '', vendor_link: supplier.vendor_link || '',
+    contract_no: supplier.contract_no || '', vendor_link: supplier.vendor_link || '', discount_type: supplier.discount_type || 'percent', discount_value: supplier.discount_value || 0,
   });
   const [custom, setCustom] = useState(Object.entries(supplier.custom_fields || {}).map(([k, v]) => ({ k, v })));
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
@@ -364,6 +373,8 @@ function OrderSupplierEdit({ orderId, supplier, onClose, onSaved }) {
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   return <Modal title={`NCC theo đơn: ${supplier.supplier_name}`} onClose={onClose} onSubmit={save} busy={busy}>
+    <div className="card" style={{ padding: 10, marginBottom: 10, background: '#f8fafc' }}><div>Tạm tính: <strong>{fmtVND(supplier.supplier_subtotal)}</strong></div><div>Chiết khấu: <strong>{fmtVND(supplier.discount_amount)}</strong></div><div>Thành tiền NCC: <strong>{fmtVND(supplier.supplier_total)}</strong></div></div>
+    <div className="row"><div className="field"><label>Loại chiết khấu</label><select value={f.discount_type} onChange={(e) => setF({ ...f, discount_type: e.target.value })}><option value="percent">Phần trăm (%)</option><option value="amount">Số tiền (đ)</option></select></div><div className="field"><label>Giá trị chiết khấu</label><input type="number" min="0" max={f.discount_type === 'percent' ? 100 : undefined} value={f.discount_value} onChange={(e) => setF({ ...f, discount_value: e.target.value })} /></div></div>
     <div className="field"><label>Hình thức thanh toán</label><select value={f.payment_method} onChange={(e) => setF({ ...f, payment_method: e.target.value })}><option value="">-- Chọn --</option>{['30-70', '50-50', '100', 'Thanh toán sau', 'Khác'].map((x) => <option key={x}>{x}</option>)}</select></div>
     <div className="field"><label>Thời gian thanh toán</label><input value={f.payment_time} onChange={(e) => setF({ ...f, payment_time: e.target.value })} /></div>
     <div className="field"><label>Số hợp đồng</label><input value={f.contract_no} onChange={(e) => setF({ ...f, contract_no: e.target.value })} /></div>

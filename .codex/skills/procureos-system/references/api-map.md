@@ -141,3 +141,9 @@ List response usually uses `{ data, total, page, limit }`.
 ## Demo Mode API
 
 `server/src/routes/demo.js` mimics enough API surface for UI preview without DB. Keep shapes aligned with frontend pages.
+
+## Order-line workspace additions
+
+- `GET /orders/items/all` accepts `date_from`, `date_to`, `team_id`, `supplier_id`, `line_status`, `flag`, and returns line detail plus missing-data flags.
+- `PATCH /orders/items/progress/bulk` updates up to 200 selected line items for admin/purchasing and re-syncs affected order statuses.
+- `PUT /orders/:id/suppliers/:supplierId` accepts supplier-level `discount_type` (`percent` or `amount`) and `discount_value`; the API recalculates the supplier and order totals.

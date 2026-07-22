@@ -143,9 +143,12 @@ const MIGRATIONS = [
   // khi tải hợp đồng .docx. Mở rộng sang LONGTEXT để chứa trọn file mẫu.
   "ALTER TABLE settings MODIFY value LONGTEXT NULL",
   "ALTER TABLE orders ADD COLUMN qdnb_link VARCHAR(1000) NULL",
+  "ALTER TABLE order_suppliers ADD COLUMN discount_type VARCHAR(16) NULL",
+  "ALTER TABLE order_suppliers ADD COLUMN discount_value DECIMAL(18,2) NOT NULL DEFAULT 0",
+  "ALTER TABLE order_suppliers ADD COLUMN discount_amount DECIMAL(18,2) NOT NULL DEFAULT 0",
   `CREATE TABLE IF NOT EXISTS order_suppliers (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, order_id BIGINT UNSIGNED NOT NULL, supplier_id BIGINT UNSIGNED NOT NULL,
-    payment_method VARCHAR(64) NULL, payment_time VARCHAR(190) NULL, contract_no VARCHAR(100) NULL, vendor_link VARCHAR(1000) NULL, custom_fields LONGTEXT NULL,
+    payment_method VARCHAR(64) NULL, payment_time VARCHAR(190) NULL, contract_no VARCHAR(100) NULL, vendor_link VARCHAR(1000) NULL, discount_type VARCHAR(16) NULL, discount_value DECIMAL(18,2) NOT NULL DEFAULT 0, discount_amount DECIMAL(18,2) NOT NULL DEFAULT 0, custom_fields LONGTEXT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id), UNIQUE KEY uq_order_suppliers (order_id, supplier_id), KEY idx_order_suppliers_supplier (supplier_id),
     CONSTRAINT fk_order_suppliers_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,

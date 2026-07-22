@@ -145,13 +145,15 @@ function refreshDemoOrder(order) {
     it.thanh_tien = base; it.tien_thue = Math.round(base * Number(it.vat_rate || 0)); it.line_total = base + it.tien_thue;
     const s = suppliers.find((x) => String(x.id) === String(it.supplier_id)); it.supplier_name = s?.name || '';
   });
-  order.total_amount = order.items.reduce((sum, it) => sum + Number(it.line_total || 0), 0); order.item_count = order.items.length;
+  const subtotal = order.items.reduce((sum, it) => sum + Number(it.line_total || 0), 0);
+  const discount = Object.entries(order.order_supplier_data || {}).reduce((sum, [supplierId, data]) => sum + Math.min(Number(data.discount_amount || 0), order.items.filter((it) => String(it.supplier_id) === supplierId).reduce((x, it) => x + Number(it.line_total || 0), 0)), 0);
+  order.total_amount = Math.max(0, subtotal - discount); order.item_count = order.items.length;
   const active = order.items.map((it) => demoLineStatus(it.progress)).filter((x) => x !== 'huy');
   if (!order.items.length) return;
   order.status = !active.length ? 'cancelled' : active.every((x) => ['da_nhan', 'da_nhap_kho', 'da_giao'].includes(x)) ? 'received' : active.includes('cho_bao_gia') ? 'in_progress' : 'ordered';
 }
 function demoOrderSuppliers(order) {
-  return [...new Map(order.items.filter((it) => it.supplier_id).map((it) => [it.supplier_id, it])).values()].map((it) => ({ supplier_id: it.supplier_id, supplier_name: it.supplier_name, ...(order.order_supplier_data?.[it.supplier_id] || {}), custom_fields: order.order_supplier_data?.[it.supplier_id]?.custom_fields || {} }));
+  return [...new Map(order.items.filter((it) => it.supplier_id).map((it) => [it.supplier_id, it])).values()].map((it) => { const data = order.order_supplier_data?.[it.supplier_id] || {}; const supplier_subtotal = order.items.filter((x) => x.supplier_id === it.supplier_id).reduce((s, x) => s + Number(x.line_total || 0), 0); const discount_amount = Math.min(Number(data.discount_amount || 0), supplier_subtotal); return { supplier_id: it.supplier_id, supplier_name: it.supplier_name, ...data, supplier_subtotal, discount_amount, supplier_total: supplier_subtotal - discount_amount, custom_fields: data.custom_fields || {} }; });
 }
 
 router.post('/auth/login', (req, res) => {
@@ -221,7 +223,7 @@ router.get('/orders/items/all', (req, res) => {
     actual_date: o.actual_date,
     total_amount: o.total_amount,
     team_name: o.team_name,
-    flags: { overdue_receipt: false, due_soon_receipt: true, due_soon_payment: false, missing_contract: false },
+    flags: { overdue_receipt: false, due_soon_receipt: true, due_soon_payment: false, missing_contract: false, missing_supplier: !it.supplier_id, missing_pr: !it.so_pr, missing_design_link: !it.design_link, missing_price: !Number(it.unit_price) },
     line_status: it.progress,
   })));
   ok(res, { data: rows, counts: {}, flagCounts: { overdue_receipt: 0, due_soon_receipt: 1, due_soon_payment: 0, missing_contract: 0 }, total: rows.length });
@@ -267,12 +269,13 @@ router.patch('/orders/:id/status', (req, res) => {
   ok(res, { ok: true, automation: { notifications_created: 1 } });
 });
 router.get('/orders/:id/suppliers', (req, res) => { const o = orders.find((x) => String(x.id) === String(req.params.id)); ok(res, { data: o ? demoOrderSuppliers(o) : [] }); });
-router.put('/orders/:id/suppliers/:supplierId', (req, res) => { const o = orders.find((x) => String(x.id) === String(req.params.id)); if (!o) return res.status(404).json({ error: 'Không tìm thấy đơn demo' }); o.order_supplier_data ||= {}; o.order_supplier_data[req.params.supplierId] = { ...req.body, custom_fields: req.body?.custom_fields || {} }; ok(res); });
+router.put('/orders/:id/suppliers/:supplierId', (req, res) => { const o = orders.find((x) => String(x.id) === String(req.params.id)); if (!o) return res.status(404).json({ error: 'Không tìm thấy đơn demo' }); const subtotal = o.items.filter((it) => String(it.supplier_id) === String(req.params.supplierId)).reduce((s, it) => s + Number(it.line_total || 0), 0); const value = Number(req.body?.discount_value || 0); o.order_supplier_data ||= {}; o.order_supplier_data[req.params.supplierId] = { ...req.body, discount_amount: req.body?.discount_type === 'percent' ? Math.round(subtotal * value / 100) : Math.min(value, subtotal), custom_fields: req.body?.custom_fields || {} }; refreshDemoOrder(o); ok(res); });
 router.get('/orders/:id/history', (req, res) => ok(res, { data: [] }));
 router.post('/orders/:id/send-quote', (req, res) => ok(res));
 router.post('/orders/:id/quote-response', (req, res) => ok(res, { ok: true, status: req.body?.decision === 'confirm' ? 'confirmed' : 'in_progress' }));
 router.post('/orders/:id/items', (req, res) => { const o = orders.find((x) => String(x.id) === String(req.params.id)); if (!o) return res.status(404).json({ error: 'Không tìm thấy đơn demo' }); if (!String(req.body?.item_name || '').trim()) return res.status(400).json({ error: 'Tên hàng là bắt buộc' }); o.items.push({ id: Date.now(), order_id: o.id, ...req.body, progress: req.body?.progress || 'cho_bao_gia' }); refreshDemoOrder(o); ok(res, { id: o.items[o.items.length - 1].id }); });
 router.patch('/orders/items/:itemId/progress', (req, res) => { const o = orders.find((x) => x.items.some((it) => String(it.id) === String(req.params.itemId))); const it = o?.items.find((x) => String(x.id) === String(req.params.itemId)); if (!it) return res.status(404).json({ error: 'Không tìm thấy dòng demo' }); it.progress = demoLineStatus(req.body?.progress); refreshDemoOrder(o); ok(res); });
+router.patch('/orders/items/progress/bulk', (req, res) => { const ids = new Set((req.body?.item_ids || []).map(String)); orders.forEach((o) => { let changed = false; o.items.forEach((it) => { if (ids.has(String(it.id))) { it.progress = demoLineStatus(req.body?.progress); changed = true; } }); if (changed) refreshDemoOrder(o); }); ok(res, { updated: ids.size }); });
 router.put('/orders/items/:itemId', (req, res) => { const o = orders.find((x) => x.items.some((it) => String(it.id) === String(req.params.itemId))); const it = o?.items.find((x) => String(x.id) === String(req.params.itemId)); if (!it) return res.status(404).json({ error: 'Không tìm thấy dòng demo' }); Object.assign(it, req.body); refreshDemoOrder(o); ok(res); });
 router.delete('/orders/items/:itemId', (req, res) => { const o = orders.find((x) => x.items.some((it) => String(it.id) === String(req.params.itemId))); if (!o) return res.status(404).json({ error: 'Không tìm thấy dòng demo' }); o.items = o.items.filter((x) => String(x.id) !== String(req.params.itemId)); refreshDemoOrder(o); ok(res); });
 router.post('/orders/items/:itemId/to-catalog', (req, res) => { const o = orders.find((x) => x.items.some((it) => String(it.id) === String(req.params.itemId))); const it = o?.items.find((x) => String(x.id) === String(req.params.itemId)); if (!it) return res.status(404).json({ error: 'Không tìm thấy dòng demo' }); it.item_code ||= 'DEMO-SKU-0001'; it.in_catalog = 1; it.progress = 'da_nhan'; refreshDemoOrder(o); ok(res, { ok: true, item_code: it.item_code }); });

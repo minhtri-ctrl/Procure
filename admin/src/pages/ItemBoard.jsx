@@ -3,12 +3,17 @@ import { Link } from 'react-router-dom';
 import { api, fmtVND, fmtNum } from '../api.js';
 import { useMeta } from '../meta.jsx';
 import { LINE_STATUSES, lineStatusOf } from '../lineStatus.js';
+import Modal from '../components/Modal.jsx';
 
 const FLAGS = [
   { code: 'overdue_receipt', label: '🔴 Quá hạn nhận hàng', color: '#dc2626' },
   { code: 'due_soon_receipt', label: '🟡 Sắp đến hạn nhận (≤3 ngày)', color: '#d97706' },
   { code: 'due_soon_payment', label: '🟠 Sắp đến hạn thanh toán (≤7 ngày)', color: '#ea580c' },
   { code: 'missing_contract', label: '🔵 >20tr chưa có ĐĐH/HĐ', color: '#2563eb' },
+  { code: 'missing_supplier', label: 'Thiếu NCC', color: '#dc2626' },
+  { code: 'missing_pr', label: 'Thiếu PR', color: '#d97706' },
+  { code: 'missing_design_link', label: 'Thiếu link thiết kế', color: '#7c3aed' },
+  { code: 'missing_price', label: 'Thiếu đơn giá', color: '#b45309' },
 ];
 
 function fmtDate(d) {
@@ -32,6 +37,8 @@ export default function ItemBoard() {
   const [err, setErr] = useState('');
   const [savingId, setSavingId] = useState(null);
   const [openOrders, setOpenOrders] = useState(() => new Set());
+  const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState('');
+  const [selected, setSelected] = useState(() => new Set()); const [bulkStatus, setBulkStatus] = useState(''); const [detail, setDetail] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true); setErr('');
@@ -39,11 +46,12 @@ export default function ItemBoard() {
     if (activeStatus) params.set('line_status', activeStatus);
     if (activeFlag) params.set('flag', activeFlag);
     if (q.trim()) params.set('q', q.trim());
+    if (dateFrom) params.set('date_from', dateFrom); if (dateTo) params.set('date_to', dateTo);
     api.get(`/orders/items/all?${params.toString()}`)
       .then((d) => { setRows(d.data); setCounts(d.counts || {}); setFlagCounts(d.flagCounts || {}); setTotal(d.total || 0); })
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false));
-  }, [activeStatus, activeFlag, q]);
+  }, [activeStatus, activeFlag, q, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -53,6 +61,8 @@ export default function ItemBoard() {
     catch (e) { setErr(e.message); }
     finally { setSavingId(null); }
   };
+  const toggleSelected = (id) => setSelected((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const applyBulk = async () => { if (!selected.size || !bulkStatus) return; if (!confirm(`Cập nhật ${selected.size} dòng sang trạng thái đã chọn?`)) return; try { await api.patch('/orders/items/progress/bulk', { item_ids: [...selected], progress: bulkStatus }); setSelected(new Set()); load(); } catch (e) { setErr(e.message); } };
 
   // Gom các dòng hàng theo đơn (order_id) — giữ nguyên thứ tự đã sắp xếp từ server (mới nhất trước).
   const orders = useMemo(() => {
@@ -88,6 +98,7 @@ export default function ItemBoard() {
       </div>
       <div className="content">
         {err && <div className="error">{err}</div>}
+        <div className="card" style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap', padding: 10, marginBottom: 10 }}><div className="field" style={{ margin: 0 }}><label>Hạn nhận từ</label><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></div><div className="field" style={{ margin: 0 }}><label>đến</label><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></div><button className="btn-sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>Xóa lọc ngày</button></div>
 
         {/* Chip cờ cảnh báo nghiệp vụ */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -109,20 +120,22 @@ export default function ItemBoard() {
           <button className="btn-sm" onClick={expandAll}>Mở tất cả</button>
           <button className="btn-sm" onClick={collapseAll}>Thu gọn tất cả</button>
         </div>
+        {selected.size > 0 && <div className="card" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, padding: 10 }}><strong>Đã chọn {selected.size} dòng</strong><select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)}><option value="">Chọn trạng thái mới</option>{LINE_STATUSES.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select><button className="btn-primary" disabled={!bulkStatus} onClick={applyBulk}>Áp dụng hàng loạt</button><button className="btn-sm" onClick={() => setSelected(new Set())}>Bỏ chọn</button></div>}
 
         {loading && <div className="muted" style={{ padding: 24, textAlign: 'center' }}>Đang tải…</div>}
         {!loading && !orders.length && <div className="muted" style={{ padding: 24, textAlign: 'center' }}>Không có mặt hàng nào.</div>}
 
         {!loading && orders.map((o) => (
           <OrderGroup key={o.order_id} order={o} open={openOrders.has(o.order_id)} onToggle={() => toggleOrder(o.order_id)}
-            savingId={savingId} onChangeStatus={changeStatus} />
+            savingId={savingId} onChangeStatus={changeStatus} selected={selected} onToggleSelected={toggleSelected} onDetail={setDetail} />
         ))}
       </div>
+      {detail && <ItemDetail item={detail} onClose={() => setDetail(null)} />}
     </>
   );
 }
 
-function OrderGroup({ order, open, onToggle, savingId, onChangeStatus }) {
+function OrderGroup({ order, open, onToggle, savingId, onChangeStatus, selected, onToggleSelected, onDetail }) {
   const { L } = useMeta();
   const f = order.flags || {};
   const activeFlags = FLAGS.filter((fl) => f[fl.code]);
@@ -150,7 +163,7 @@ function OrderGroup({ order, open, onToggle, savingId, onChangeStatus }) {
           <table>
             <thead>
               <tr>
-                <th>{L('item_board.col.ten_hang', 'Tên hàng')}</th><th>{L('item_board.col.loai', 'Loại')}</th><th className="r">{L('item_board.col.sl', 'SL')}</th>
+                <th></th><th>{L('item_board.col.ten_hang', 'Tên hàng')}</th><th>{L('item_board.col.loai', 'Loại')}</th><th className="r">{L('item_board.col.sl', 'SL')}</th>
                 <th className="r">{L('item_board.col.don_gia', 'Đơn giá')}</th><th className="r">{L('item_board.col.tong', 'Tổng')}</th><th>{L('item_board.col.ncc', 'NCC')}</th>
                 <th style={{ minWidth: 160 }}>{L('item_board.col.trang_thai_xu_ly', 'Trạng thái xử lý')}</th>
               </tr>
@@ -159,7 +172,8 @@ function OrderGroup({ order, open, onToggle, savingId, onChangeStatus }) {
               {order.items.map((it) => {
                 const st = lineStatusOf(it.line_status);
                 return (
-                  <tr key={it.id}>
+                  <tr key={it.id} onClick={() => onDetail(it)} style={{ cursor: 'pointer' }}>
+                    <td><input type="checkbox" checked={selected.has(it.id)} onClick={(e) => e.stopPropagation()} onChange={() => onToggleSelected(it.id)} /></td>
                     <td>{it.item_name}{it.item_code && <div className="muted" style={{ fontSize: 12 }}>{it.item_code}</div>}</td>
                     <td>{it.loai_hh || '-'}</td>
                     <td className="r">{fmtNum(it.quantity)}</td>
@@ -171,7 +185,7 @@ function OrderGroup({ order, open, onToggle, savingId, onChangeStatus }) {
                       <select
                         value={it.line_status}
                         disabled={savingId === it.id}
-                        onChange={(e) => onChangeStatus(it, e.target.value)}
+                        onClick={(e) => e.stopPropagation()} onChange={(e) => onChangeStatus(it, e.target.value)}
                         style={{ marginTop: 4, width: '100%' }}
                       >
                         {LINE_STATUSES.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
@@ -186,6 +200,10 @@ function OrderGroup({ order, open, onToggle, savingId, onChangeStatus }) {
       )}
     </div>
   );
+}
+
+function ItemDetail({ item, onClose }) {
+  return <Modal title={`Chi tiết dòng: ${item.item_name}`} onClose={onClose} hideSubmit><div className="info-grid"><div><label>Mã đơn</label><div>{item.order_code}</div></div><div><label>NCC</label><div>{item.supplier_name || 'Chưa chọn'}</div></div><div><label>Số PR</label><div>{item.so_pr || 'Chưa có'}</div></div><div><label>Đơn giá</label><div>{fmtVND(item.unit_price)}</div></div></div><div className="field"><label>Link thiết kế</label>{item.design_link ? <a href={item.design_link} target="_blank" rel="noreferrer">Mở liên kết</a> : <span className="muted">Chưa có</span>}</div><div className="field"><label>Ghi chú</label><div>{item.note || item.description || '-'}</div></div></Modal>;
 }
 
 function Chip({ label, count, color, code, activeCode, onClick }) {

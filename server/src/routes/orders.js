@@ -198,7 +198,7 @@ function computeOrderFlags(o) {
 }
 
 router.get('/items/all', wrap(async (req, res) => {
-  const { q, line_status, flag, team_id, supplier_id } = req.query;
+  const { q, line_status, flag, team_id, supplier_id, date_from, date_to } = req.query;
   const where = ['o.deleted_at IS NULL'];
   const params = [];
   const sc = scopeClause(req.user);
@@ -206,9 +206,11 @@ router.get('/items/all', wrap(async (req, res) => {
   if (q) { where.push('(o.order_code LIKE ? OR i.item_name LIKE ? OR o.project_name LIKE ?)'); params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   if (team_id) { where.push('o.team_id = ?'); params.push(team_id); }
   if (supplier_id) { where.push('i.supplier_id = ?'); params.push(supplier_id); }
+  if (date_from) { where.push('o.expected_date >= ?'); params.push(date_from); }
+  if (date_to) { where.push('o.expected_date < DATE_ADD(?, INTERVAL 1 DAY)'); params.push(date_to); }
   const rows = await query(
-    `SELECT i.id, i.order_id, i.item_name, i.loai_hh, i.unit, i.quantity, i.unit_price, i.line_total,
-            i.progress, i.nhap_kho, i.in_catalog, i.item_code,
+    `SELECT i.id, i.order_id, i.item_name, i.loai_hh, i.unit, i.quantity, i.unit_price, i.line_total, i.vat_rate, i.discount_rate,
+            i.progress, i.nhap_kho, i.in_catalog, i.item_code, i.so_pr, i.design_link, i.note, i.description, i.quotation_url,
             o.order_code, o.project_name, o.status AS order_status, o.requester_name,
             o.expected_date, o.actual_date, o.total_amount, o.po_no, o.contract_no,
             COALESCE(hs.payment_term_days, 14) AS payment_term_days,
@@ -228,7 +230,7 @@ router.get('/items/all', wrap(async (req, res) => {
     if (!orderFlags.has(r.order_id)) orderFlags.set(r.order_id, computeOrderFlags(r));
   }
 
-  let data = rows.map((r) => ({ ...r, line_status: normalizeLineStatus(r.progress), flags: orderFlags.get(r.order_id) }));
+  let data = rows.map((r) => ({ ...r, line_status: normalizeLineStatus(r.progress), flags: { ...orderFlags.get(r.order_id), missing_supplier: !r.supplier_name, missing_pr: !r.so_pr, missing_design_link: !r.design_link, missing_price: !Number(r.unit_price) } }));
   if (line_status) data = data.filter((r) => r.line_status === line_status);
   if (flag) data = data.filter((r) => r.flags[flag]);
 
@@ -237,10 +239,11 @@ router.get('/items/all', wrap(async (req, res) => {
   for (const r of rows) { const c = normalizeLineStatus(r.progress); counts[c] = (counts[c] || 0) + 1; }
 
   // Đếm theo cờ cảnh báo — đếm số ĐƠN (không phải số dòng) khớp mỗi cờ.
-  const flagCounts = { overdue_receipt: 0, due_soon_receipt: 0, due_soon_payment: 0, missing_contract: 0 };
+  const flagCounts = { overdue_receipt: 0, due_soon_receipt: 0, due_soon_payment: 0, missing_contract: 0, missing_supplier: 0, missing_pr: 0, missing_design_link: 0, missing_price: 0 };
   for (const f of orderFlags.values()) {
     for (const k of Object.keys(flagCounts)) if (f[k]) flagCounts[k]++;
   }
+  for (const r of data) for (const k of ['missing_supplier', 'missing_pr', 'missing_design_link', 'missing_price']) if (r.flags[k]) flagCounts[k]++;
 
   res.json({ data, counts, flagCounts, total: rows.length });
 }));
@@ -277,10 +280,14 @@ async function loadOrderSuppliers(orderId) {
      AND NOT EXISTS (SELECT 1 FROM order_suppliers os WHERE os.order_id = o.id AND os.supplier_id = o.supplier_id)
      AND NOT EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id AND i.supplier_id = o.supplier_id)`, [orderId]
   );
+  const subtotals = await query('SELECT supplier_id, COALESCE(SUM(line_total),0) AS subtotal FROM order_items WHERE order_id = ? AND supplier_id IS NOT NULL GROUP BY supplier_id', [orderId]);
+  const subtotalBySupplier = new Map(subtotals.map((r) => [String(r.supplier_id), Number(r.subtotal || 0)]));
   return [...links, ...lineOnly, ...headerOnly].map((row) => {
     let custom_fields = {};
     try { custom_fields = row.custom_fields ? JSON.parse(row.custom_fields) : {}; } catch { /* optional legacy data */ }
-    return { ...row, custom_fields };
+    const supplier_subtotal = subtotalBySupplier.get(String(row.supplier_id)) || 0;
+    const discount_amount = Math.min(Number(row.discount_amount || 0), supplier_subtotal);
+    return { ...row, supplier_subtotal, discount_amount, supplier_total: supplier_subtotal - discount_amount, custom_fields };
   });
 }
 
@@ -347,7 +354,15 @@ router.put('/:id/suppliers/:supplierId', requireRole('admin', 'purchasing'), wra
   const supplierId = Number(req.params.supplierId);
   const [supplier] = await query('SELECT id FROM suppliers WHERE id = ?', [supplierId]);
   if (!supplier) return res.status(404).json({ error: 'Không tìm thấy nhà cung cấp' });
-  const fields = pick(req.body || {}, ['payment_method', 'payment_time', 'contract_no', 'vendor_link', 'custom_fields']);
+  const fields = pick(req.body || {}, ['payment_method', 'payment_time', 'contract_no', 'vendor_link', 'discount_type', 'discount_value', 'custom_fields']);
+  if (fields.discount_type && !['percent', 'amount'].includes(fields.discount_type)) return res.status(400).json({ error: 'Loại chiết khấu không hợp lệ' });
+  if (fields.discount_value !== undefined) {
+    const value = Number(fields.discount_value);
+    if (!Number.isFinite(value) || value < 0 || (fields.discount_type === 'percent' && value > 100)) return res.status(400).json({ error: 'Giá trị chiết khấu không hợp lệ' });
+    const [subtotal] = await query('SELECT COALESCE(SUM(line_total),0) AS total FROM order_items WHERE order_id = ? AND supplier_id = ?', [req.params.id, supplierId]);
+    fields.discount_value = value;
+    fields.discount_amount = fields.discount_type === 'percent' ? Math.round(Number(subtotal.total || 0) * value / 100) : Math.min(value, Number(subtotal.total || 0));
+  }
   if (fields.custom_fields && typeof fields.custom_fields === 'object') fields.custom_fields = JSON.stringify(fields.custom_fields);
   const cols = Object.keys(fields);
   const updates = cols.length ? cols.map((c) => `\`${c}\` = VALUES(\`${c}\`)`).join(', ') : 'supplier_id = VALUES(supplier_id)';
@@ -355,6 +370,7 @@ router.put('/:id/suppliers/:supplierId', requireRole('admin', 'purchasing'), wra
     `INSERT INTO order_suppliers (order_id, supplier_id${cols.length ? `, ${cols.map((c) => `\`${c}\``).join(', ')}` : ''}) VALUES (?, ?${cols.map(() => ', ?').join('')}) ON DUPLICATE KEY UPDATE ${updates}`,
     [req.params.id, supplierId, ...cols.map((c) => fields[c])]
   );
+  await recalcTotal(req.params.id);
   res.json({ ok: true });
 }));
 
@@ -553,6 +569,17 @@ router.patch('/items/:itemId/progress', requireRole('admin', 'purchasing', 'ware
   res.json({ ok: true, sync: await syncOrderStatusFromItems(row.order_id, req.user.email) });
 }));
 
+router.patch('/items/progress/bulk', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
+  const itemIds = [...new Set((Array.isArray(req.body.item_ids) ? req.body.item_ids : []).map(Number).filter(Number.isFinite))].slice(0, 200);
+  const progress = normalizeLineStatus(req.body.progress);
+  if (!itemIds.length || !LINE_STATUS_CODES.includes(progress)) return res.status(400).json({ error: 'Chọn dòng hàng và trạng thái hợp lệ' });
+  const marks = itemIds.map(() => '?').join(',');
+  const rows = await query(`SELECT id, order_id FROM order_items WHERE id IN (${marks})`, itemIds);
+  await query(`UPDATE order_items SET progress = ? WHERE id IN (${marks})`, [progress, ...itemIds]);
+  for (const orderId of [...new Set(rows.map((r) => r.order_id))]) await syncOrderStatusFromItems(orderId, req.user.email);
+  res.json({ ok: true, updated: rows.length });
+}));
+
 // Đẩy dòng hàng sang Danh mục SP (sinh MA_HANG) -> chờ nhập kho.
 router.post('/items/:itemId/to-catalog', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
   const it = await getItem(req.params.itemId);
@@ -583,7 +610,10 @@ router.post('/items/:itemId/handover', requireRole('admin', 'purchasing'), wrap(
 
 async function getItem(id) { const [r] = await query('SELECT * FROM order_items WHERE id = ?', [id]); return r; }
 async function recalcTotal(orderId) {
-  await query('UPDATE orders SET total_amount = (SELECT COALESCE(SUM(line_total),0) FROM order_items WHERE order_id = ?) WHERE id = ?', [orderId, orderId]);
+  const [lines] = await query('SELECT COALESCE(SUM(line_total),0) AS total FROM order_items WHERE order_id = ?', [orderId]);
+  const discounts = await query(`SELECT os.discount_amount, COALESCE((SELECT SUM(i.line_total) FROM order_items i WHERE i.order_id=os.order_id AND i.supplier_id=os.supplier_id),0) AS subtotal FROM order_suppliers os WHERE os.order_id = ?`, [orderId]);
+  const discount = discounts.reduce((sum, r) => sum + Math.min(Number(r.discount_amount || 0), Number(r.subtotal || 0)), 0);
+  await query('UPDATE orders SET total_amount = ? WHERE id = ?', [Math.max(0, Number(lines.total || 0) - discount), orderId]);
 }
 
 export default router;
