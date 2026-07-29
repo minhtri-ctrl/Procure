@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authRequired, signToken } from '../middleware/auth.js';
 import { config } from '../config.js';
-import { extractQuotation, QUOTATION_MAX_BYTES } from '../lib/quotationExtraction.js';
+import { extractQuotation, QUOTATION_MAX_BYTES, QUOTATION_ACCEPTED } from '../lib/quotationExtraction.js';
 
 const router = Router();
 
@@ -364,13 +364,13 @@ function demoExtract(file) { return extractQuotation({ filename: file.filename, 
 router.post('/quotation-extractions/extract-batch', (req, res, next) => {
   const files = Array.isArray(req.body?.files) ? req.body.files : [];
   if (!files.length || files.length > 3) return res.status(400).json({ error: 'Chọn từ 1 đến 3 file báo giá.' });
-  Promise.all(files.map(demoExtract)).then((results) => ok(res, { files: results, limits: { max_bytes: QUOTATION_MAX_BYTES, max_files: 3, max_batch_bytes: 12 * 1024 * 1024, accepted: ['.xlsx', '.xls', '.csv', '.pdf', '.png', '.jpg', '.jpeg', '.webp'] } })).catch(next);
+  Promise.all(files.map(demoExtract)).then((results) => ok(res, { files: results, limits: { max_bytes: QUOTATION_MAX_BYTES, max_files: 3, max_batch_bytes: 12 * 1024 * 1024, accepted: QUOTATION_ACCEPTED } })).catch(next);
 });
 router.post('/quotation-extractions/extract', (req, res, next) => {
   try {
     const { filename, data_base64: dataBase64 } = req.body || {};
     if (!filename || !dataBase64) return res.status(400).json({ error: 'Cần chọn file báo giá.' });
-    demoExtract({ filename, data_base64: dataBase64 }).then((result) => result.status === 'error' ? res.status(400).json({ error: result.error }) : ok(res, { ...result, suppliers: [...new Set(result.items.map((item) => item.supplier_name).filter(Boolean))], limits: { max_bytes: QUOTATION_MAX_BYTES, accepted: ['.xlsx', '.xls', '.csv', '.pdf', '.png', '.jpg', '.jpeg', '.webp'] } })).catch(next);
+    demoExtract({ filename, data_base64: dataBase64 }).then((result) => result.status === 'error' ? res.status(400).json({ error: result.error }) : ok(res, { ...result, suppliers: [...new Set(result.items.map((item) => item.supplier_name).filter(Boolean))], limits: { max_bytes: QUOTATION_MAX_BYTES, accepted: QUOTATION_ACCEPTED } })).catch(next);
   } catch (error) { next(error); }
 });
 router.get('/quotation-extractions/orders/:orderId/attachments', (req, res) => ok(res, { data: quoteAttachments.filter((file) => String(file.order_id) === String(req.params.orderId)) }));

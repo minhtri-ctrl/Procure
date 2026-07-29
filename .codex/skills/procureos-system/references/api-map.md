@@ -147,7 +147,7 @@ List response usually uses `{ data, total, page, limit }`.
 
 - `POST /quotation-extractions/extract` (admin/purchasing only)
   - JSON body: `{ filename, data_base64 }`; maximum decoded size is 5 MB.
-  - Supported input: `.xlsx`, `.xls`, `.csv`, `.pdf`, `.png`, `.jpg`/`.jpeg`, `.webp`, each up to 5 MB. PDF and images require a valid OpenAI configuration because they are processed as multimodal AI input.
+  - Supported input: `.xlsx`, `.xls`, `.csv`, `.pdf`, `.doc`, `.docx`, `.png`, `.jpg`/`.jpeg`, `.webp`, each up to 5 MB. PDF, Word, and images require a valid OpenAI configuration. DOCX text is extracted server-side before structured AI extraction; legacy DOC is submitted as an OpenAI file input.
   - Response contains `items` with `item_name`, `quantity`, `unit_price`, `vat_percent`, `supplier_name`, a `raw` source excerpt (plus parser sheet/row when applicable), `issues`, and `confidence`, plus `mode` (`ai`, `local-parser`, or `demo-parser`).
   - The endpoint only extracts/reviews data: it never creates an order. In `DEMO_MODE`, it uses the internal parser unless both a valid OpenAI configuration and `DEMO_ALLOW_EXTERNAL_AI=1` are present.
 

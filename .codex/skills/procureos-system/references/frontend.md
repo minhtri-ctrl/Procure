@@ -84,7 +84,7 @@ Guard arrays before `.map()` when touching dashboards or demo routes.
 
 ## Create-order quotation review
 
-`CreateOrder.jsx` has a **Tải báo giá & AI nhập liệu** action. It uploads a spreadsheet/CSV, PDF, or PNG/JPG/WEBP image to the server extraction endpoint, then shows an editable review table before it changes the manual order form. PDF/image extraction requires configured OpenAI multimodal AI; spreadsheets retain a local-parser fallback. Each review row requires item name, positive quantity, price, VAT%, and a selected master supplier. The original browser file can be opened for comparison; Apply only fills the existing order-line form and never persists an order by itself. The review shows parser sheet/row or an AI source excerpt when available.
+`CreateOrder.jsx` has a **Tải báo giá & AI nhập liệu** action. It uploads a spreadsheet/CSV, PDF, Word DOC/DOCX, or PNG/JPG/WEBP image to the server extraction endpoint, then shows an editable review table before it changes the manual order form. PDF/image/Word extraction requires configured OpenAI AI; DOCX text is extracted server-side and legacy DOC is passed as a file input. Spreadsheets retain a local-parser fallback. Each review row requires item name, positive quantity, price, VAT%, and a selected master supplier. The original browser file can be opened for comparison; Apply only fills the existing order-line form and never persists an order by itself. The review shows parser sheet/row or an AI source excerpt when available.
 
 ## Batch quotation review
 

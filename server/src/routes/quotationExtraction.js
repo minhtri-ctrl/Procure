@@ -3,10 +3,10 @@ import { createHash } from 'node:crypto';
 import { query, pool } from '../db.js';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap } from '../util.js';
-import { extractQuotation, QUOTATION_MAX_BYTES } from '../lib/quotationExtraction.js';
+import { extractQuotation, QUOTATION_MAX_BYTES, QUOTATION_ACCEPTED } from '../lib/quotationExtraction.js';
 
 const router = Router();
-const ACCEPTED = ['.xlsx', '.xls', '.csv', '.pdf', '.png', '.jpg', '.jpeg', '.webp'];
+const ACCEPTED = QUOTATION_ACCEPTED;
 const MAX_BATCH_FILES = 3;
 const MAX_BATCH_BYTES = 12 * 1024 * 1024;
 

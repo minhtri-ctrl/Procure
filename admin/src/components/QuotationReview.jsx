@@ -65,8 +65,8 @@ export default function QuotationReview({ onApply, orderItems = [], title = 'T�
   };
   return <div className="card" style={{ marginTop: 16 }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-      <div><h3 style={{ margin: 0 }}>🤖 {title}</h3><div className="muted" style={{ marginTop: 4 }}>Excel/XLSX/CSV/PDF/PNG/JPG/WEBP; tối đa 5 MB/file, 3 file/lượt. Luôn review trước khi áp dụng.</div></div>
-      <label className="btn btn-primary" style={{ cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Đang xử lý…' : title}<input type="file" multiple accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.webp" disabled={busy} onChange={upload} style={{ display: 'none' }} /></label>
+      <div><h3 style={{ margin: 0 }}>🤖 {title}</h3><div className="muted" style={{ marginTop: 4 }}>Excel/XLSX/CSV/PDF/Word DOC-DOCX/PNG/JPG/WEBP; tối đa 5 MB/file, 3 file/lượt. Luôn review trước khi áp dụng.</div></div>
+      <label className="btn btn-primary" style={{ cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Đang xử lý…' : title}<input type="file" multiple accept=".xlsx,.xls,.csv,.pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" disabled={busy} onChange={upload} style={{ display: 'none' }} /></label>
     </div>
     {files.map((file) => <div key={file.key} className="card" style={{ marginTop: 12, background: '#fffaf0', border: '1px solid #f2c46d' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><strong>{file.filename}</strong><span className={file.status === 'error' ? 'error' : 'muted'}>{file.status === 'processing' ? 'Đang phân tích…' : file.status === 'error' ? file.error : file.mode === 'demo-parser' ? 'DEMO: parser nội bộ, không phải AI.' : file.mode === 'ai' ? 'AI: cần đối chiếu file gốc.' : 'Parser nội bộ.'}</span>{file.previewUrl && <a href={file.previewUrl} target="_blank" rel="noreferrer">Mở file gốc</a>}</div>

@@ -1,10 +1,12 @@
 import XLSX from 'xlsx';
+import PizZip from 'pizzip';
 import { config } from '../config.js';
 
 export const QUOTATION_MAX_BYTES = 5 * 1024 * 1024;
-export const QUOTATION_ACCEPTED = ['.xlsx', '.xls', '.csv', '.pdf', '.png', '.jpg', '.jpeg', '.webp'];
+export const QUOTATION_ACCEPTED = ['.xlsx', '.xls', '.csv', '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.doc', '.docx'];
 const SPREADSHEET_EXTENSIONS = ['.xlsx', '.xls', '.csv'];
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
+const WORD_EXTENSIONS = ['.doc', '.docx'];
 
 const FIELDS = {
   item_name: ['ten hang', 'ten san pham', 'hang hoa', 'san pham', 'description', 'item'],
@@ -77,14 +79,36 @@ function loadWorkbook({ filename, dataBase64 }) {
 
 function documentType({ filename, dataBase64 }) {
   const ext = String(filename || '').toLowerCase().match(/\.[a-z0-9]+$/)?.[0] || '';
-  if (!QUOTATION_ACCEPTED.includes(ext)) throw Object.assign(new Error('Định dạng chưa hỗ trợ. Hãy dùng Excel, CSV, PDF, PNG, JPG hoặc WEBP.'), { status: 415 });
+  if (!QUOTATION_ACCEPTED.includes(ext)) throw Object.assign(new Error('Định dạng chưa hỗ trợ. Hãy dùng Excel, CSV, PDF, Word DOC/DOCX, PNG, JPG hoặc WEBP.'), { status: 415 });
   const buffer = Buffer.from(String(dataBase64 || ''), 'base64');
   if (!buffer.length || buffer.length > QUOTATION_MAX_BYTES) throw Object.assign(new Error('File rỗng hoặc vượt giới hạn 5 MB.'), { status: 413 });
   if (ext === '.pdf' && buffer.subarray(0, 5).toString() !== '%PDF-') throw Object.assign(new Error('File PDF không hợp lệ.'), { status: 400 });
   if (ext === '.png' && !(buffer[0] === 0x89 && buffer.subarray(1, 4).toString() === 'PNG')) throw Object.assign(new Error('Ảnh PNG không hợp lệ.'), { status: 400 });
   if (['.jpg', '.jpeg'].includes(ext) && !(buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff)) throw Object.assign(new Error('Ảnh JPEG không hợp lệ.'), { status: 400 });
   if (ext === '.webp' && !(buffer.subarray(0, 4).toString() === 'RIFF' && buffer.subarray(8, 12).toString() === 'WEBP')) throw Object.assign(new Error('Ảnh WEBP không hợp lệ.'), { status: 400 });
-  return { ext, kind: ext === '.pdf' ? 'pdf' : IMAGE_EXTENSIONS.includes(ext) ? 'image' : 'spreadsheet' };
+  if (ext === '.docx' && !(buffer[0] === 0x50 && buffer[1] === 0x4b)) throw Object.assign(new Error('File Word DOCX không hợp lệ.'), { status: 400 });
+  if (ext === '.doc' && !(buffer[0] === 0xd0 && buffer[1] === 0xcf && buffer[2] === 0x11 && buffer[3] === 0xe0)) throw Object.assign(new Error('File Word DOC không hợp lệ.'), { status: 400 });
+  return { ext, kind: ext === '.pdf' ? 'pdf' : IMAGE_EXTENSIONS.includes(ext) ? 'image' : WORD_EXTENSIONS.includes(ext) ? 'word' : 'spreadsheet' };
+}
+
+function wordMime(ext) {
+  return ext === '.docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/msword';
+}
+
+function decodeXmlText(value) {
+  return String(value || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+}
+
+function docxText(input) {
+  try {
+    const zip = new PizZip(Buffer.from(String(input.dataBase64 || ''), 'base64'));
+    const xml = zip.file('word/document.xml')?.asText() || '';
+    const text = decodeXmlText(xml.replace(/<w:tab\/>/g, '\t').replace(/<\/w:tc>/g, '\t').replace(/<\/w:p>/g, '\n').replace(/<[^>]+>/g, ' ')).replace(/\s+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim();
+    if (!text) throw new Error('Không tìm thấy nội dung văn bản trong DOCX.');
+    return text.slice(0, 90000);
+  } catch (error) {
+    throw Object.assign(new Error(`Không đọc được Word DOCX: ${error.message}`), { status: 422 });
+  }
 }
 
 function rawTablesForAI(input) {
@@ -155,6 +179,27 @@ async function extractWithOpenAI(rawTables) {
   } finally { clearTimeout(timeout); }
 }
 
+async function extractWordTextWithOpenAI(text) {
+  const prompt = `Đọc nội dung báo giá Word sau và trích xuất từng dòng hàng. Không suy diễn giá trị thiếu. VAT% là phần trăm thuế suất, không phải số tiền thuế. Nhận diện NCC theo từng bảng/dòng; tuyệt đối không gộp hàng giữa NCC. Giữ đoạn nguồn ngắn trong raw. Nội dung Word:\n${text}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST', signal: controller.signal,
+      headers: { Authorization: `Bearer ${config.ai.apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.QUOTATION_AI_MODEL || config.ai.model,
+        messages: [{ role: 'system', content: 'You extract procurement quotations. Return only the supplied JSON schema. Preserve source values in raw; use null when unknown.' }, { role: 'user', content: prompt }],
+        response_format: { type: 'json_schema', json_schema: { name: 'quotation_extraction', strict: true, schema: outputSchema() } },
+        max_tokens: 3500,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || 'AI không thể đọc Word');
+    return validateExtraction(JSON.parse(data.choices?.[0]?.message?.content || '{}'));
+  } finally { clearTimeout(timeout); }
+}
+
 function outputSchema() {
   return {
     type: 'object', additionalProperties: false, required: ['items'],
@@ -172,6 +217,7 @@ async function extractVisualWithOpenAI(input, type) {
   const content = [{ type: 'input_text', text: prompt }];
   // Responses API expects inline file content as a base64 data URL, not raw base64.
   if (type.kind === 'pdf') content.push({ type: 'input_file', filename: input.filename, file_data: `data:application/pdf;base64,${input.dataBase64}` });
+  else if (type.kind === 'word') content.push({ type: 'input_file', filename: input.filename, file_data: `data:${wordMime(type.ext)};base64,${input.dataBase64}` });
   else content.push({ type: 'input_image', image_url: `data:${type.ext === '.png' ? 'image/png' : type.ext === '.webp' ? 'image/webp' : 'image/jpeg'};base64,${input.dataBase64}`, detail: 'high' });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
@@ -190,10 +236,15 @@ async function extractVisualWithOpenAI(input, type) {
 export async function extractQuotation(input) {
   const type = documentType(input);
   const canUseAi = !!config.ai.apiKey && config.ai.provider === 'openai' && (!config.demoMode || config.ai.allowDemoExternal);
+  if (type.kind === 'word' && type.ext === '.docx') {
+    if (!canUseAi) throw Object.assign(new Error('Word DOCX cần AI_PROVIDER=openai, AI_API_KEY hợp lệ, và DEMO_ALLOW_EXTERNAL_AI=1 khi đang ở DEMO_MODE.'), { status: 422 });
+    try { return { mode: 'ai', tables: [], items: await extractWordTextWithOpenAI(docxText(input)) }; }
+    catch (error) { throw Object.assign(new Error(`AI không thể đọc Word DOCX: ${error.message}`), { status: 422 }); }
+  }
   if (type.kind !== 'spreadsheet') {
     if (!canUseAi) throw Object.assign(new Error('PDF và ảnh cần AI_PROVIDER=openai, AI_API_KEY hợp lệ, và DEMO_ALLOW_EXTERNAL_AI=1 khi đang ở DEMO_MODE.'), { status: 422 });
     try { return { mode: 'ai', tables: [], items: await extractVisualWithOpenAI(input, type) }; }
-    catch (error) { throw Object.assign(new Error(`AI không thể đọc ${type.kind === 'pdf' ? 'PDF' : 'ảnh'}: ${error.message}`), { status: 422 }); }
+    catch (error) { throw Object.assign(new Error(`AI không thể đọc ${type.kind === 'pdf' ? 'PDF' : type.kind === 'word' ? 'Word DOC' : 'ảnh'}: ${error.message}`), { status: 422 }); }
   }
   const rawTables = rawTablesForAI(input);
   let tables = [];

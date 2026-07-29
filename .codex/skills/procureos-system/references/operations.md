@@ -32,7 +32,7 @@ admin@garena.vn / admin123
 
 ## AI quotation extraction
 
-The server accepts Excel/XLSX/CSV, PDF, PNG/JPG/JPEG, and WEBP quotation files up to 5 MB. PDF/image extraction uses the OpenAI Responses API as multimodal input. `DEMO_MODE=1` uses the internal spreadsheet parser unless an administrator explicitly sets `DEMO_ALLOW_EXTERNAL_AI=1` together with a valid OpenAI configuration; the UI identifies local results as demo/parser results.
+The server accepts Excel/XLSX/CSV, PDF, Word DOC/DOCX, PNG/JPG/JPEG, and WEBP quotation files up to 5 MB. PDF/image/Word extraction uses OpenAI only on the server. DOCX text is extracted from the Office document package first and then sent as bounded text for structured extraction; legacy DOC is sent as an OpenAI file input. `DEMO_MODE=1` uses the internal spreadsheet parser unless an administrator explicitly sets `DEMO_ALLOW_EXTERNAL_AI=1` together with a valid OpenAI configuration; the UI identifies local results as demo/parser results.
 
 For production AI-assisted normalization, configure server environment variables (never expose them to the React app):
 
@@ -45,7 +45,7 @@ QUOTATION_AI_MODEL=gpt-4o
 DEMO_ALLOW_EXTERNAL_AI=0
 ```
 
-Only `AI_PROVIDER=openai` with a nonempty key enables the external AI call. In demo mode, it additionally requires `DEMO_ALLOW_EXTERNAL_AI=1`. The extraction adapter sends bounded raw spreadsheet rows or a PDF/image multimodal input to OpenAI with a strict JSON schema for item, quantity, price, VAT%, supplier, and a source excerpt string. Inline PDF input is serialized as a `data:application/pdf;base64,...` URL. Without AI configuration, ProcureOS uses the local parser for spreadsheets and rejects PDF/images clearly.
+Only `AI_PROVIDER=openai` with a nonempty key enables the external AI call. In demo mode, it additionally requires `DEMO_ALLOW_EXTERNAL_AI=1`. The extraction adapter sends bounded raw spreadsheet rows, DOCX text, or a PDF/image/legacy-DOC input to OpenAI with a strict JSON schema for item, quantity, price, VAT%, supplier, and a source excerpt string. Inline PDF and Word file input are serialized as typed data URLs. Without AI configuration, ProcureOS uses the local parser for spreadsheets and rejects PDF/images/Word clearly. If a legacy DOC is rejected by the AI provider, save it as DOCX and upload again.
 
 Batch review limits are 3 files / 12 MB total, while each file remains capped at 5 MB. In DEMO_MODE, supplier creation still goes through `/suppliers` only after Apply; no secret is exposed to the browser.
 
