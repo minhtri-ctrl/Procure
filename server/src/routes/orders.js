@@ -275,7 +275,7 @@ router.get('/:id', wrap(async (req, res) => {
      LEFT JOIN suppliers s ON s.id=q.supplier_id LEFT JOIN order_items i ON i.id=q.order_item_id
      WHERE q.order_id=? ORDER BY q.id DESC`, [req.params.id]
   );
-  res.json({ ...rows[0], custom_fields: custom, items, order_suppliers: await loadOrderSuppliers(req.params.id), quote_attachments, history });
+  res.json({ ...rows[0], custom_fields: custom, items, order_suppliers: await loadOrderSuppliers(req.params.id), quote_attachments: quote_attachments.map((file) => ({ ...file, file_url: `/api/quotation-extractions/orders/${req.params.id}/attachments/${file.id}/file` })), history });
 }));
 
 async function loadOrderSuppliers(orderId) {

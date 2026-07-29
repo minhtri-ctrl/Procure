@@ -93,14 +93,15 @@ Checklist:
 
 1. Keep each source file and supplier group separate; never auto-merge ambiguous supplier names.
 2. System supplier selection wins over the AI source name. Create a new master supplier only from the Apply action.
-3. Persist one attachment blob plus `order_quote_attachments` links after an order/item exists; test link deletion and demo parity.
-4. Test Add vs explicit Update in Order Detail; AI must not overwrite an existing line automatically.
+3. Persist one attachment blob plus explicit `order_quote_attachments` links (`order_item_id`, `supplier_id`) after an order/item exists; never associate a file from a table index or supplier-only fallback. Test link deletion and demo parity.
+4. Test Add vs explicit Update in Order Detail; AI must not overwrite an existing line automatically. On Create Order, remove only fully empty default drafts, and map saved `item_ids` through stable client line keys before posting attachment links.
+5. Test BG `Xem` and `Tải xuống`: the authenticated route must return original content, filename and MIME; PDF/images may preview while Office/sheets download.
 
 ## Change work queues or supplier suggestions
 
 1. Preserve individual line mutations and the existing bulk-progress confirmation.
 2. Return BG metadata in both MySQL and demo item-list responses; retain `quotation_url` fallback.
-3. Keep recommendations server-side and advisory. Test that applying one uses the normal line-update route and that no recommendation changes a supplier automatically.
+3. Keep recommendations server-side and advisory. Rank historical internal evidence first; enable external AI ranking only through explicit server env opt-in. If no internal match exists, return a configured/not-configured external-adapter status rather than inventing a vendor. Test that applying one uses the normal line-update route and that no recommendation changes a supplier automatically.
 4. For Orders UI, keep table default and make advanced filters collapsible; Kanban is read-only unless workflow rules are deliberately extended. Do not attach row-click editing to dense tables.
 
 ## Validate

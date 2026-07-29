@@ -23,8 +23,8 @@ export default function QuotationReview({ onApply, orderItems = [], title = 'T�
     if (files.length + fresh.length > 3) { setError('Tối đa 3 file cho mỗi lượt phân tích.'); return; }
     setBusy(true); setError('');
     try {
-      const payload = await Promise.all(fresh.map(async (file) => ({ client_id: fingerprint(file), filename: file.name, data_base64: await readFile(file) })));
-      setFiles((old) => [...old, ...fresh.map((file) => ({ key: fingerprint(file), filename: file.name, previewUrl: URL.createObjectURL(file), status: 'processing', items: [], data_base64: null }))]);
+      const payload = await Promise.all(fresh.map(async (file) => ({ client_id: fingerprint(file), filename: file.name, mime: file.type || 'application/octet-stream', data_base64: await readFile(file) })));
+      setFiles((old) => [...old, ...fresh.map((file) => ({ key: fingerprint(file), filename: file.name, mime: file.type || 'application/octet-stream', previewUrl: URL.createObjectURL(file), status: 'processing', items: [], data_base64: null }))]);
       const result = await api.post('/quotation-extractions/extract-batch', { files: payload });
       setFiles((old) => old.map((entry) => {
         const response = (result.files || []).find((file) => file.client_id === entry.key);

@@ -50,7 +50,7 @@ Frontend `Dashboard.jsx` expects:
 - `PATCH /orders/items/:itemId/progress`
 - `POST /orders/items/:itemId/to-catalog`
 - `POST /orders/items/:itemId/handover`
-- `POST /orders/items/supplier-suggestions` (admin/purchasing; advisory ranking only, never updates a supplier)
+- `POST /orders/items/supplier-suggestions` (admin/purchasing; advisory only, never updates a supplier). It returns ranked internal candidates with history/price evidence. With `AI_SUPPLIER_SUGGESTIONS=1` and allowed OpenAI configuration it returns `mode: ai-system`; otherwise `rule-based`/`demo-rule-based`. If no internal match exists, `external` reports the external-provider adapter state and never invents a supplier.
 - `POST /orders/automation/run`
 
 `GET /orders/:id` returns header plus `items`, `order_suppliers`, `history`, parsed `custom_fields`, and `quote_attachments` (filename, MIME type, upload time, linked item/supplier, URL). The supplier endpoint stores commercial terms specific to an order: payment method/time, contract number, Vendor link, and extensible `custom_fields`.
@@ -154,7 +154,8 @@ List response usually uses `{ data, total, page, limit }`.
 ## Quotation batch and source attachments
 
 - `POST /quotation-extractions/extract-batch` accepts up to 3 independent files as `{ files: [{ client_id, filename, data_base64 }] }`. Each file returns its own status, fingerprint, rows, and supplier-match result; one failure does not discard other files.
-- `GET|POST /quotation-extractions/orders/:orderId/attachments` lists or creates quotation-source links. POST stores one blob and can link it to several item ids.
+- `GET|POST /quotation-extractions/orders/:orderId/attachments` lists or creates quotation-source links. POST stores one blob and accepts `links: [{ item_id, supplier_id, source_supplier_name }]`, keeping multi-NCC source files attached only to their explicit item/NCC pairs. Legacy `item_ids` remains accepted.
+- `GET /quotation-extractions/orders/:orderId/attachments/:linkId/file?download=1` returns the original blob only when the link belongs to the requested order, preserving filename and MIME. Omit `download=1` for safe inline preview.
 - `DELETE /quotation-extractions/orders/:orderId/attachments/:linkId` deletes one relation and removes the blob only when no relation remains.
 
 ## Order-line workspace additions

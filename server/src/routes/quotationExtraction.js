@@ -73,25 +73,47 @@ router.get('/orders/:orderId/attachments', wrap(async (req, res) => {
      LEFT JOIN suppliers s ON s.id=q.supplier_id LEFT JOIN order_items i ON i.id=q.order_item_id
      WHERE q.order_id=? ORDER BY q.id DESC`, [req.params.orderId]
   );
-  res.json({ data: rows });
+  res.json({ data: rows.map((row) => ({ ...row, file_url: `/api/quotation-extractions/orders/${req.params.orderId}/attachments/${row.id}/file` })) });
+}));
+router.get('/orders/:orderId/attachments/:linkId/file', wrap(async (req, res) => {
+  const [file] = await query(
+    `SELECT a.filename, a.mime, a.data_base64
+     FROM order_quote_attachments q JOIN attachments a ON a.id=q.attachment_id
+     WHERE q.id=? AND q.order_id=?`, [req.params.linkId, req.params.orderId]
+  );
+  if (!file) return res.status(404).json({ error: 'Không tìm thấy file báo giá thuộc đơn hàng.' });
+  const disposition = req.query.download === '1' ? 'attachment' : 'inline';
+  res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodeURIComponent(file.filename || 'bao-gia')}`);
+  res.type(file.mime || 'application/octet-stream').send(Buffer.from(file.data_base64, 'base64'));
 }));
 router.post('/orders/:orderId/attachments', wrap(async (req, res) => {
-  const { filename, mime, data_base64, supplier_id, item_ids = [], extraction_batch, source_fingerprint, source_supplier_name } = req.body || {};
+  const { filename, mime, data_base64, supplier_id, item_ids = [], links = [], extraction_batch, source_fingerprint, source_supplier_name } = req.body || {};
   if (!filename || !data_base64) return res.status(400).json({ error: 'Thiếu file báo giá.' });
   if (bytesOf(data_base64) > QUOTATION_MAX_BYTES) return res.status(400).json({ error: 'File báo giá vượt giới hạn 5 MB.' });
-  const itemIds = await checkOrderAndItems(req.params.orderId, item_ids);
-  if (supplier_id) { const [supplier] = await query('SELECT id FROM suppliers WHERE id=?', [supplier_id]); if (!supplier) return res.status(400).json({ error: 'NCC hệ thống không hợp lệ.' }); }
+  const legacyItemIds = await checkOrderAndItems(req.params.orderId, item_ids);
+  const requestedLinks = Array.isArray(links) && links.length
+    ? links.map((link) => ({ item_id: Number(link?.item_id) || null, supplier_id: Number(link?.supplier_id) || null, source_supplier_name: String(link?.source_supplier_name || source_supplier_name || '') }))
+    : (legacyItemIds.length ? legacyItemIds.map((itemId) => ({ item_id: itemId, supplier_id: Number(supplier_id) || null, source_supplier_name: String(source_supplier_name || '') })) : [{ item_id: null, supplier_id: Number(supplier_id) || null, source_supplier_name: String(source_supplier_name || '') }]);
+  const linkedItemIds = requestedLinks.map((link) => link.item_id).filter(Boolean);
+  await checkOrderAndItems(req.params.orderId, linkedItemIds);
+  const supplierIds = [...new Set(requestedLinks.map((link) => link.supplier_id).filter(Boolean))];
+  if (supplierIds.length) {
+    const rows = await query(`SELECT id FROM suppliers WHERE id IN (${supplierIds.map(() => '?').join(',')})`, supplierIds);
+    if (rows.length !== supplierIds.length) return res.status(400).json({ error: 'NCC hệ thống không hợp lệ.' });
+  }
+  const itemRows = linkedItemIds.length ? await query(`SELECT id, supplier_id FROM order_items WHERE order_id=? AND id IN (${linkedItemIds.map(() => '?').join(',')})`, [req.params.orderId, ...linkedItemIds]) : [];
+  const itemSupplier = new Map(itemRows.map((item) => [Number(item.id), Number(item.supplier_id) || null]));
+  if (requestedLinks.some((link) => link.item_id && link.supplier_id && itemSupplier.get(link.item_id) !== link.supplier_id)) return res.status(400).json({ error: 'NCC của file báo giá phải khớp NCC đã chọn trên dòng hàng.' });
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [attachment] = await conn.query('INSERT INTO attachments (kind, ref_id, filename, mime, data_base64, uploaded_by) VALUES (?,?,?,?,?,?)', ['quotation', req.params.orderId, filename, mime || 'application/octet-stream', data_base64, req.user.email]);
-    const targets = itemIds.length ? itemIds : [null];
-    for (const itemId of targets) await conn.query(
+    for (const link of requestedLinks) await conn.query(
       'INSERT INTO order_quote_attachments (order_id, order_item_id, supplier_id, attachment_id, extraction_batch, source_fingerprint, source_supplier_name, created_by) VALUES (?,?,?,?,?,?,?,?)',
-      [req.params.orderId, itemId, supplier_id || null, attachment.insertId, extraction_batch || null, source_fingerprint || null, source_supplier_name || null, req.user.email]
+      [req.params.orderId, link.item_id || null, link.supplier_id || null, attachment.insertId, extraction_batch || null, source_fingerprint || null, link.source_supplier_name || null, req.user.email]
     );
     await conn.commit();
-    res.status(201).json({ id: attachment.insertId, url: `/api/uploads/${attachment.insertId}`, linked_items: targets.length });
+    res.status(201).json({ id: attachment.insertId, linked_items: requestedLinks.length });
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
 }));
 router.delete('/orders/:orderId/attachments/:linkId', wrap(async (req, res) => {

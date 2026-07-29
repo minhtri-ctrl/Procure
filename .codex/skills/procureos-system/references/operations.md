@@ -51,6 +51,17 @@ Batch review limits are 3 files / 12 MB total, while each file remains capped at
 
 The supplier-suggestion demo is deterministic `demo-rule-based` ranking from in-memory purchase history. It is advisory only and never changes a line supplier until a user applies the suggestion.
 
+## AI supplier recommendation
+
+Supplier recommendation first ranks bounded data already in ProcureOS: matching item names, purchase count, average/min/max price, most recent purchase, active state, and master-contract metadata. It never creates or changes a supplier automatically.
+
+```env
+AI_SUPPLIER_SUGGESTIONS=1
+SUPPLIER_EXTERNAL_SEARCH_PROVIDER=
+```
+
+`AI_SUPPLIER_SUGGESTIONS=1` also requires `AI_PROVIDER=openai`, `AI_API_KEY`, and `DEMO_ALLOW_EXTERNAL_AI=1` in demo mode. Without this opt-in the system uses a clearly labelled rule-based internal ranking. If no internal match exists and no external provider adapter is implemented, the response says external search is not configured; it must never fabricate an outside supplier.
+
 ## Local MySQL Mode
 
 Use `.env` DB settings:

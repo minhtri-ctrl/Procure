@@ -275,7 +275,7 @@ router.post('/orders', (req, res) => {
 router.get('/orders/:id', (req, res) => {
   const order = orders.find((o) => String(o.id) === String(req.params.id));
   if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn demo' });
-  ok(res, { ...order, order_suppliers: demoOrderSuppliers(order), quote_attachments: quoteAttachments.filter((file) => String(file.order_id) === String(order.id)), history: [{ id: 1, order_id: order.id, from_status: null, to_status: order.status, changed_by: user.email, note: 'Demo history', created_at: '2026-07-12 09:00:00' }] });
+  ok(res, { ...order, order_suppliers: demoOrderSuppliers(order), quote_attachments: quoteAttachments.filter((file) => String(file.order_id) === String(order.id)).map((file) => ({ ...file, file_url: `/api/quotation-extractions/orders/${order.id}/attachments/${file.id}/file` })), history: [{ id: 1, order_id: order.id, from_status: null, to_status: order.status, changed_by: user.email, note: 'Demo history', created_at: '2026-07-12 09:00:00' }] });
 });
 router.put('/orders/:id', (req, res) => {
   const order = orders.find((entry) => String(entry.id) === String(req.params.id));
@@ -373,13 +373,28 @@ router.post('/quotation-extractions/extract', (req, res, next) => {
     demoExtract({ filename, data_base64: dataBase64 }).then((result) => result.status === 'error' ? res.status(400).json({ error: result.error }) : ok(res, { ...result, suppliers: [...new Set(result.items.map((item) => item.supplier_name).filter(Boolean))], limits: { max_bytes: QUOTATION_MAX_BYTES, accepted: QUOTATION_ACCEPTED } })).catch(next);
   } catch (error) { next(error); }
 });
-router.get('/quotation-extractions/orders/:orderId/attachments', (req, res) => ok(res, { data: quoteAttachments.filter((file) => String(file.order_id) === String(req.params.orderId)) }));
+router.get('/quotation-extractions/orders/:orderId/attachments', (req, res) => ok(res, { data: quoteAttachments.filter((file) => String(file.order_id) === String(req.params.orderId)).map((file) => ({ ...file, file_url: `/api/quotation-extractions/orders/${req.params.orderId}/attachments/${file.id}/file` })) }));
+router.get('/quotation-extractions/orders/:orderId/attachments/:linkId/file', (req, res) => {
+  const link = quoteAttachments.find((file) => String(file.id) === String(req.params.linkId) && String(file.order_id) === String(req.params.orderId));
+  const file = link && demoFiles.find((entry) => String(entry.id) === String(link.attachment_id));
+  if (!file) return res.status(404).json({ error: 'Không tìm thấy file báo giá thuộc đơn hàng.' });
+  const disposition = req.query.download === '1' ? 'attachment' : 'inline';
+  res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodeURIComponent(link.filename || 'bao-gia')}`);
+  res.type(file.mime || 'application/octet-stream').send(Buffer.from(file.data_base64, 'base64'));
+});
 router.post('/quotation-extractions/orders/:orderId/attachments', (req, res) => {
   const order = orders.find((entry) => String(entry.id) === String(req.params.orderId)); const body = req.body || {};
   if (!order || !body.filename || !body.data_base64) return res.status(400).json({ error: 'Thiếu đơn hàng hoặc file báo giá.' });
   const fileId = Date.now() + demoFiles.length; demoFiles.push({ id: fileId, mime: body.mime || 'application/octet-stream', data_base64: body.data_base64 });
-  const targets = body.item_ids?.length ? body.item_ids : [null]; targets.forEach((itemId) => quoteAttachments.push({ id: Date.now() + quoteAttachments.length, order_id: order.id, order_item_id: itemId, supplier_id: body.supplier_id || null, attachment_id: fileId, filename: body.filename, url: `/api/uploads/${fileId}`, source_supplier_name: body.source_supplier_name || '', supplier_name: suppliers.find((s) => String(s.id) === String(body.supplier_id))?.name || '', item_name: order.items.find((item) => String(item.id) === String(itemId))?.item_name || null }));
-  ok(res, { id: fileId, url: `/api/uploads/${fileId}`, linked_items: targets.length });
+  const links = Array.isArray(body.links) && body.links.length ? body.links : (body.item_ids?.length ? body.item_ids.map((itemId) => ({ item_id: itemId, supplier_id: body.supplier_id, source_supplier_name: body.source_supplier_name })) : [{ item_id: null, supplier_id: body.supplier_id, source_supplier_name: body.source_supplier_name }]);
+  for (const target of links) {
+    const itemId = Number(target?.item_id) || null; const supplierId = Number(target?.supplier_id) || null;
+    const item = itemId ? order.items.find((entry) => String(entry.id) === String(itemId)) : null;
+    if (itemId && !item) return res.status(400).json({ error: 'Dòng hàng không thuộc đơn demo.' });
+    if (item && supplierId && String(item.supplier_id) !== String(supplierId)) return res.status(400).json({ error: 'NCC của file báo giá phải khớp NCC đã chọn trên dòng hàng.' });
+    quoteAttachments.push({ id: Date.now() + quoteAttachments.length, order_id: order.id, order_item_id: itemId, supplier_id: supplierId, attachment_id: fileId, filename: body.filename, url: `/api/uploads/${fileId}`, source_supplier_name: target?.source_supplier_name || '', supplier_name: suppliers.find((s) => String(s.id) === String(supplierId))?.name || '', item_name: item?.item_name || null });
+  }
+  ok(res, { id: fileId, linked_items: links.length });
 });
 router.delete('/quotation-extractions/orders/:orderId/attachments/:linkId', (req, res) => { const index = quoteAttachments.findIndex((file) => String(file.id) === String(req.params.linkId) && String(file.order_id) === String(req.params.orderId)); if (index < 0) return res.status(404).json({ error: 'Không tìm thấy liên kết file.' }); quoteAttachments.splice(index, 1); ok(res); });
 

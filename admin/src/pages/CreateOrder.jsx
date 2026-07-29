@@ -8,7 +8,12 @@ import SupplierSelect from '../components/SupplierSelect.jsx';
 import QuotationReview from '../components/QuotationReview.jsx';
 import Modal from '../components/Modal.jsx';
 
-const emptyLine = () => ({ loai_hh: 'Vật phẩm', item_name: '', description: '', quantity: 1, unit_price: 0, vatPct: 8, unit: 'cái', design_link: '', note: '', so_pr: '', supplier_id: '', master_contract: '' });
+let lineSequence = 0;
+const nextLineKey = () => `draft-${Date.now()}-${++lineSequence}`;
+const emptyLine = () => ({ client_line_key: nextLineKey(), loai_hh: 'Vật phẩm', item_name: '', description: '', quantity: 1, unit_price: 0, vatPct: 8, unit: 'cái', design_link: '', note: '', so_pr: '', supplier_id: '', master_contract: '' });
+const isEmptyDraft = (line) => !String(line.item_name || '').trim() && !String(line.description || '').trim()
+  && !String(line.design_link || '').trim() && !String(line.note || '').trim() && !String(line.so_pr || '').trim()
+  && !String(line.supplier_id || '').trim() && !String(line.master_contract || '').trim();
 
 export default function CreateOrder() {
   const nav = useNavigate(); const { user } = useAuth(); const { states, L } = useMeta();
@@ -21,9 +26,14 @@ export default function CreateOrder() {
   const setLine = (i, patch) => setLines((old) => old.map((line, index) => index === i ? { ...line, ...patch } : line));
   const calc = (line) => { const amount = Math.round(Number(line.quantity || 0) * Number(line.unit_price || 0)); const tax = Math.round(amount * Number(line.vatPct || 0) / 100); return { amount, tax, total: amount + tax }; };
   const applyQuotes = async (rows) => {
-    const base = lines.length;
-    setLines((old) => [...old, ...rows.map((row) => ({ ...emptyLine(), item_name: row.item_name, quantity: row.quantity, unit_price: row.unit_price, vatPct: row.vat_percent, supplier_id: row.supplier_id, note: `Nguồn báo giá: ${row.file.filename}` }))]);
-    setPendingQuotes((old) => [...old, ...rows.map((row, index) => ({ line_index: base + index, supplier_id: row.supplier_id, filename: row.file.filename, data_base64: row.file.data_base64, extraction_batch: row.file.client_id, source_fingerprint: row.file.fingerprint, source_supplier_name: row.supplier_name }))]);
+    if (!rows.length) return;
+    const additions = rows.map((row) => {
+      const line = { ...emptyLine(), item_name: row.item_name, quantity: row.quantity, unit_price: row.unit_price, vatPct: row.vat_percent, supplier_id: row.supplier_id, note: `Nguồn báo giá: ${row.file.filename}` };
+      return { row, line };
+    });
+    // Only discard untouched placeholders. A manual draft is never removed by AI Apply.
+    setLines((old) => [...old.filter((line) => !isEmptyDraft(line)), ...additions.map(({ line }) => line)]);
+    setPendingQuotes((old) => [...old, ...additions.map(({ row, line }) => ({ client_line_key: line.client_line_key, supplier_id: row.supplier_id, filename: row.file.filename, mime: row.file.mime, data_base64: row.file.data_base64, extraction_batch: row.file.client_id, source_fingerprint: row.file.fingerprint, source_supplier_name: row.supplier_name }))]);
   };
   const save = async () => {
     setErr(''); if (!header.team_id) return setErr('Vui lòng chọn Team');
@@ -31,9 +41,17 @@ export default function CreateOrder() {
     if (!items.length) return setErr('Cần ít nhất một dòng hàng có tên');
     setBusy(true);
     try {
+      const savedLines = lines.filter((line) => line.item_name);
       const result = await api.post('/orders', { ...header, team_id: header.team_id || null, items });
+      const itemIdByLineKey = new Map(savedLines.map((line, index) => [line.client_line_key, result.item_ids?.[index]]));
       const grouped = new Map();
-      pendingQuotes.forEach((quote) => { const group = grouped.get(quote.source_fingerprint) || { ...quote, item_ids: [] }; const itemId = result.item_ids?.[quote.line_index]; if (itemId) group.item_ids.push(itemId); grouped.set(quote.source_fingerprint, group); });
+      pendingQuotes.forEach((quote) => {
+        const itemId = itemIdByLineKey.get(quote.client_line_key);
+        if (!itemId) return;
+        const group = grouped.get(quote.source_fingerprint) || { ...quote, links: [] };
+        group.links.push({ item_id: itemId, supplier_id: quote.supplier_id, source_supplier_name: quote.source_supplier_name });
+        grouped.set(quote.source_fingerprint, group);
+      });
       for (const quote of grouped.values()) if (quote.data_base64) await api.post(`/quotation-extractions/orders/${result.id}/attachments`, quote);
       nav(`/orders/${result.id}`);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
@@ -53,4 +71,15 @@ export default function CreateOrder() {
   </div></>;
 }
 
-function Suggestions({ line, onApply, onClose }) { const [data, setData] = useState(null); const [err, setErr] = useState(''); useEffect(() => { api.post('/orders/items/supplier-suggestions', line).then(setData).catch((e) => setErr(e.message)); }, []); return <Modal title="Đề xuất NCC" onClose={onClose} hideSubmit>{err && <div className="error">{err}</div>}{!data && !err ? <div>Đang tải…</div> : (data?.suggestions || []).map((s) => <div key={s.supplier_id} className="card" style={{ padding: 8, marginBottom: 6 }}><strong>{s.supplier_name}</strong> · {s.score}/100<div className="muted">{s.reason}</div><button className="btn-sm btn-primary" onClick={() => onApply(s)}>Áp dụng NCC này</button></div>)}</Modal>; }
+function Suggestions({ line, onApply, onClose }) {
+  const [data, setData] = useState(null); const [err, setErr] = useState('');
+  useEffect(() => { api.post('/orders/items/supplier-suggestions', line).then(setData).catch((e) => setErr(e.message)); }, []);
+  return <Modal title="Đề xuất NCC" onClose={onClose} hideSubmit>
+    <div className="muted" style={{ marginBottom: 8 }}>{data?.mode === 'ai-system' ? 'AI xếp hạng từ dữ liệu NCC nội bộ. Bạn vẫn phải tự xác nhận trước khi áp dụng.' : 'Đề xuất dựa trên dữ liệu nội bộ; NCC chỉ thay đổi khi bạn bấm áp dụng.'}</div>
+    {err && <div className="error">{err}</div>}{!data && !err ? <div>Đang tải…</div> : <>
+      {data?.message && <div className="muted" style={{ marginBottom: 8 }}>{data.message}</div>}
+      {(data?.suggestions || []).map((s) => <div key={s.supplier_id} className="card" style={{ padding: 8, marginBottom: 6 }}><strong>{s.supplier_name}</strong> · {s.score}/100 <span className="muted">· {s.confidence === 'high' ? 'Tin cậy cao' : s.confidence === 'medium' ? 'Tin cậy vừa' : 'Tin cậy thấp'}</span><div className="muted">{s.reason}</div><div className="muted">Đã mua: {s.evidence?.purchase_count || 0} lần{s.evidence?.average_price ? ` · Giá TB: ${fmtVND(s.evidence.average_price)}` : ''}</div><button className="btn-sm btn-primary" onClick={() => onApply(s)}>Áp dụng NCC này</button></div>)}
+      {data?.external && <div className="card" style={{ padding: 8 }}><strong>NCC ngoài hệ thống – cần xác minh</strong><div className="muted">{data.external.message}</div></div>}
+    </>}
+  </Modal>;
+}

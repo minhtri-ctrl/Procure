@@ -129,9 +129,9 @@ When adding columns:
 
 ## Quotation source attachments
 
-`order_quote_attachments` links one `attachments` blob to `order_id`, optional `order_item_id`, optional `supplier_id`, and extraction batch/fingerprint/source-supplier metadata. It avoids copying one quotation blob for every row, keeps legacy `order_items.quotation_url` working, and cascades safely with the order/attachment.
+`order_quote_attachments` links one `attachments` blob to `order_id`, optional `order_item_id`, optional `supplier_id`, and extraction batch/fingerprint/source-supplier metadata. New links must use the real row id and the row's selected supplier id; the UI must never infer a row from table index or supplier alone. A blob can have several explicit links for a multi-NCC source file. Legacy links without `order_item_id` stay at order level with a warning and are not guessed onto a row.
 
-Supplier suggestions are calculated on demand from suppliers and historical `order_items`; no prompt, AI secret, or recommendation cache is persisted. A recommendation never changes `order_items.supplier_id` without an explicit line update.
+Supplier suggestions are calculated on demand from suppliers and historical `order_items`; no prompt, AI secret, or recommendation cache is persisted. Optional AI only ranks bounded internal candidate evidence server-side. A recommendation never changes `order_items.supplier_id` without an explicit line update.
 
 ## Quotation extraction persistence
 

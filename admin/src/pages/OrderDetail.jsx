@@ -48,7 +48,11 @@ export default function OrderDetail() {
       else { const result = await api.post(`/orders/${id}/items`, payload); linked.push({ ...row, item_id: result.id }); }
     }
     const groups = new Map();
-    linked.forEach((row) => { const group = groups.get(row.file.fingerprint) || { filename: row.file.filename, data_base64: row.file.data_base64, supplier_id: row.supplier_id, extraction_batch: row.file.client_id, source_fingerprint: row.file.fingerprint, source_supplier_name: row.supplier_name, item_ids: [] }; group.item_ids.push(row.item_id); groups.set(row.file.fingerprint, group); });
+    linked.forEach((row) => {
+      const group = groups.get(row.file.fingerprint) || { filename: row.file.filename, mime: row.file.mime, data_base64: row.file.data_base64, extraction_batch: row.file.client_id, source_fingerprint: row.file.fingerprint, links: [] };
+      group.links.push({ item_id: row.item_id, supplier_id: row.supplier_id, source_supplier_name: row.supplier_name });
+      groups.set(row.file.fingerprint, group);
+    });
     for (const quote of groups.values()) if (quote.data_base64) await api.post(`/quotation-extractions/orders/${id}/attachments`, quote);
     setQuoteReview(false); setMsg('Đã áp dụng dữ liệu báo giá sau review.'); load();
   };
@@ -208,7 +212,7 @@ export default function OrderDetail() {
                     <td className="r">{fmtVND(it.unit_price)}</td>
                     <td className="r"><strong>{fmtVND(it.line_total)}</strong></td>
                     <td>{it.supplier_name || '-'}</td>
-                    <td><QuoteCell item={it} files={(o.quote_attachments || []).filter((file) => String(file.order_item_id) === String(it.id) || (!file.order_item_id && file.supplier_id && String(file.supplier_id) === String(it.supplier_id)))} /></td>
+                    <td><QuoteCell orderId={o.id} item={it} files={(o.quote_attachments || []).filter((file) => String(file.order_item_id) === String(it.id))} /></td>
                     <td>{it.so_pr || '-'}</td>
                     <td>{it.design_link ? <a href={it.design_link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Mở</a> : '-'}</td>
                     <td>
@@ -234,7 +238,7 @@ export default function OrderDetail() {
         </div>
       </div>
 
-      {(() => { const general = (o.quote_attachments || []).filter((file) => !file.order_item_id && !file.supplier_id); return general.length ? <div className="card" style={{ marginTop: 16 }}><h3 style={{ marginTop: 0 }}>Báo giá cấp đơn</h3>{general.map((file) => <div key={file.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}><a href={file.url} target="_blank" rel="noreferrer">📎 {file.filename}</a>{canWrite && <button className="btn-sm btn-danger" onClick={async () => { if (confirm('Xóa liên kết file báo giá này?')) { await api.del(`/quotation-extractions/orders/${id}/attachments/${file.id}`); load(); } }}>Xóa</button>}</div>)}</div> : null; })()}
+      {(() => { const general = (o.quote_attachments || []).filter((file) => !file.order_item_id); return general.length ? <div className="card" style={{ marginTop: 16 }}><h3 style={{ marginTop: 0 }}>Báo giá cấp đơn</h3><div className="muted" style={{ marginBottom: 8 }}>Các file này chưa gắn với một dòng hàng cụ thể nên không hiển thị ở cột BG của dòng.</div>{general.map((file) => <div key={file.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}><QuoteFileActions orderId={o.id} file={file} />{canWrite && <button className="btn-sm btn-danger" onClick={async () => { if (confirm('Xóa liên kết file báo giá này?')) { await api.del(`/quotation-extractions/orders/${id}/attachments/${file.id}`); load(); } }}>Xóa</button>}</div>)}</div> : null; })()}
       {editing && <LineEdit item={editing} orderId={o.id} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
       {supplierEdit && <OrderSupplierEdit orderId={o.id} supplier={supplierEdit} onClose={() => setSupplierEdit(null)} onSaved={() => { setSupplierEdit(null); load(); }} />}
       {editHdr && <EditOrder order={o} teams={teams} onClose={() => setEditHdr(false)} onSaved={() => { setEditHdr(false); load(); }} />}
@@ -310,13 +314,34 @@ function Info({ label, value }) {
   );
 }
 
-function QuoteCell({ item, files }) {
+function filenameFromHeader(value, fallback) {
+  const match = /filename\*=UTF-8''([^;]+)/i.exec(value || '');
+  try { return match ? decodeURIComponent(match[1]) : fallback; } catch { return fallback; }
+}
+function QuoteFileActions({ orderId, file }) {
+  const [busy, setBusy] = useState(false);
+  const filePath = file.file_url || `/quotation-extractions/orders/${orderId}/attachments/${file.id}/file`;
+  const run = async (download) => {
+    setBusy(true);
+    try {
+      const result = await api.file(filePath, { download });
+      const url = URL.createObjectURL(result.blob);
+      const name = filenameFromHeader(result.filename, file.filename || 'bao-gia');
+      if (download || !/^image\//.test(result.mime) && !/application\/pdf/i.test(result.mime)) {
+        const anchor = document.createElement('a'); anchor.href = url; anchor.download = name; document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      } else window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } finally { setBusy(false); }
+  };
+  return <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}><span title={file.mime || ''}>{file.filename}</span><button className="btn-sm" disabled={busy} onClick={() => run(false)}>Xem</button><button className="btn-sm" disabled={busy} onClick={() => run(true)}>Tải xuống</button></span>;
+}
+function QuoteCell({ orderId, item, files }) {
   const [open, setOpen] = useState(false);
   const legacy = item.quotation_url ? [{ id: 'legacy', filename: 'Báo giá cũ', url: item.quotation_url, supplier_name: item.supplier_name }] : [];
   const all = [...files, ...legacy];
   if (!all.length) return <span className="muted">-</span>;
   const title = all.map((f) => `${f.filename} · ${f.supplier_name || 'NCC chưa rõ'} · ${f.created_at ? fmtDate(f.created_at) : ''}`).join('\n');
-  return <span style={{ position: 'relative' }} title={title}><a href={all[0].url} target="_blank" rel="noreferrer" onClick={(e) => { if (all.length > 1) { e.preventDefault(); setOpen(!open); } }}>📎</a>{all.length > 1 && <button className="btn-sm" style={{ marginLeft: 3 }} onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>{all.length}</button>}{open && <div className="card" style={{ position: 'absolute', zIndex: 5, minWidth: 220, padding: 8, top: 24, left: 0 }}>{all.map((f) => <a key={f.id} href={f.url} target="_blank" rel="noreferrer" style={{ display: 'block', padding: 4 }}>{f.filename}</a>)}</div>}</span>;
+  return <span style={{ position: 'relative' }} title={title}><button className="btn-sm" onClick={() => setOpen(!open)}>📎{all.length > 1 ? ` ${all.length}` : ''}</button>{open && <div className="card" style={{ position: 'absolute', zIndex: 5, minWidth: 310, padding: 8, top: 28, left: 0 }}>{all.map((f) => f.id === 'legacy' ? <a key={f.id} href={f.url} target="_blank" rel="noreferrer" style={{ display: 'block', padding: 4 }}>{f.filename}</a> : <div key={f.id} style={{ padding: 4 }}><QuoteFileActions orderId={orderId} file={f} /></div>)}</div>}</span>;
 }
 
 // Buyer sửa dòng: giá, SL, VAT, NCC, master, số PR, thiết kế, upload báo giá.
@@ -390,7 +415,7 @@ function LineEdit({ item, orderId, onClose, onSaved }) {
 function SupplierSuggestions({ input, onClose, onApply }) {
   const [data, setData] = useState(null); const [err, setErr] = useState('');
   useEffect(() => { api.post('/orders/items/supplier-suggestions', input).then(setData).catch((e) => setErr(e.message)); }, []);
-  return <Modal title="Đề xuất NCC" onClose={onClose} hideSubmit><p className="muted">Chỉ là đề xuất rule-based; NCC chỉ thay đổi khi bạn bấm áp dụng.</p>{err && <div className="error">{err}</div>}{!data && !err && <div>Đang xếp hạng…</div>}{data?.message && <div className="muted">{data.message}</div>}{(data?.suggestions || []).map((s) => <div key={s.supplier_id} className="card" style={{ padding: 10, marginBottom: 8 }}><strong>{s.supplier_name}</strong> <span className="badge">{s.score}/100</span><div className="muted">{s.reason}</div><div style={{ fontSize: 13 }}>Đã mua: {s.evidence?.purchase_count || 0} lần{s.evidence?.recent_price ? ` · Giá gần nhất: ${fmtVND(s.evidence.recent_price)}` : ''}{s.warning ? ` · ${s.warning}` : ''}</div><button className="btn-primary btn-sm" style={{ marginTop: 6 }} onClick={() => onApply(s)}>Áp dụng NCC này</button></div>)}</Modal>;
+  return <Modal title="Đề xuất NCC" onClose={onClose} hideSubmit><p className="muted">{data?.mode === 'ai-system' ? 'AI xếp hạng từ dữ liệu NCC nội bộ. NCC chỉ thay đổi khi bạn bấm áp dụng.' : 'Đề xuất từ dữ liệu nội bộ; NCC chỉ thay đổi khi bạn bấm áp dụng.'}</p>{err && <div className="error">{err}</div>}{!data && !err && <div>Đang xếp hạng…</div>}{data?.message && <div className="muted">{data.message}</div>}{(data?.suggestions || []).map((s) => <div key={s.supplier_id} className="card" style={{ padding: 10, marginBottom: 8 }}><strong>{s.supplier_name}</strong> <span className="badge">{s.score}/100</span><div className="muted">{s.reason}</div><div style={{ fontSize: 13 }}>Đã mua: {s.evidence?.purchase_count || 0} lần{s.evidence?.average_price ? ` · Giá TB: ${fmtVND(s.evidence.average_price)}` : ''}{s.evidence?.last_purchase ? ` · Lần gần nhất: ${fmtDate(s.evidence.last_purchase)}` : ''}{s.warning ? ` · ${s.warning}` : ''}</div><button className="btn-primary btn-sm" style={{ marginTop: 6 }} onClick={() => onApply(s)}>Áp dụng NCC này</button></div>)}{data?.external && <div className="card" style={{ padding: 10 }}><strong>NCC ngoài hệ thống – cần xác minh</strong><div className="muted">{data.external.message}</div></div>}</Modal>;
 }
 
 function OrderSupplierEdit({ orderId, supplier, onClose, onSaved }) {
