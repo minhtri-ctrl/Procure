@@ -7,6 +7,7 @@ import { nextOrderCode, nextItemCode } from '../lib/codes.js';
 import { normalizeLineStatus, LINE_STATUS_CODES } from '../lib/lineStatus.js';
 import { createNotification } from '../lib/notify.js';
 import { runAutomationSweep, runOrderAutomation } from '../lib/orderAutomation.js';
+import { suggestSuppliers } from '../lib/supplierSuggestions.js';
 
 const router = Router();
 router.use(authRequired);
@@ -211,6 +212,8 @@ router.get('/items/all', wrap(async (req, res) => {
   const rows = await query(
     `SELECT i.id, i.order_id, i.item_name, i.loai_hh, i.unit, i.quantity, i.unit_price, i.line_total, i.vat_rate, i.discount_rate,
             i.progress, i.nhap_kho, i.in_catalog, i.item_code, i.so_pr, i.design_link, i.note, i.description, i.quotation_url,
+            (SELECT COUNT(*) FROM order_quote_attachments qa WHERE qa.order_item_id=i.id) AS quote_file_count,
+            (SELECT CONCAT('/api/uploads/', qa.attachment_id) FROM order_quote_attachments qa WHERE qa.order_item_id=i.id ORDER BY qa.id DESC LIMIT 1) AS quote_file_url,
             o.order_code, o.project_name, o.status AS order_status, o.requester_name,
             o.expected_date, o.actual_date, o.total_amount, o.po_no, o.contract_no,
             COALESCE(hs.payment_term_days, 14) AS payment_term_days,
@@ -248,6 +251,11 @@ router.get('/items/all', wrap(async (req, res) => {
   res.json({ data, counts, flagCounts, total: rows.length });
 }));
 
+// Advisory only: applying a supplier still uses the existing line update validation.
+router.post('/items/supplier-suggestions', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
+  res.json(await suggestSuppliers(req.body));
+}));
+
 // GET one + items + lịch sử
 router.get('/:id', wrap(async (req, res) => {
   const rows = await query(
@@ -261,7 +269,13 @@ router.get('/:id', wrap(async (req, res) => {
   const history = await query('SELECT * FROM order_status_history WHERE order_id = ? ORDER BY id', [req.params.id]);
   let custom = {};
   try { custom = rows[0].custom_fields ? JSON.parse(rows[0].custom_fields) : {}; } catch { custom = {}; }
-  res.json({ ...rows[0], custom_fields: custom, items, order_suppliers: await loadOrderSuppliers(req.params.id), history });
+  const quote_attachments = await query(
+    `SELECT q.*, a.filename, a.mime, a.created_at, CONCAT('/api/uploads/', a.id) AS url, s.name AS supplier_name, i.item_name
+     FROM order_quote_attachments q JOIN attachments a ON a.id=q.attachment_id
+     LEFT JOIN suppliers s ON s.id=q.supplier_id LEFT JOIN order_items i ON i.id=q.order_item_id
+     WHERE q.order_id=? ORDER BY q.id DESC`, [req.params.id]
+  );
+  res.json({ ...rows[0], custom_fields: custom, items, order_suppliers: await loadOrderSuppliers(req.params.id), quote_attachments, history });
 }));
 
 async function loadOrderSuppliers(orderId) {
@@ -311,7 +325,7 @@ router.post('/', wrap(async (req, res) => {
       cols.map((c) => header[c])
     );
     const [[{ id: orderId }]] = await conn.query('SELECT LAST_INSERT_ID() AS id');
-    let total = 0;
+    let total = 0; const itemIds = [];
     for (const raw of items) {
       const it = pick(raw, ITEM_FIELDS);
       if (!it.item_name) continue;
@@ -319,15 +333,16 @@ router.post('/', wrap(async (req, res) => {
       Object.assign(it, computeLine(it));
       total += it.line_total;
       const ic = Object.keys(it);
-      await conn.query(
+      const [inserted] = await conn.query(
         `INSERT INTO order_items (order_id, ${ic.map((c) => `\`${c}\``).join(',')}) VALUES (?, ${ic.map(() => '?').join(',')})`,
         [orderId, ...ic.map((c) => it[c])]
       );
+      itemIds.push(inserted.insertId);
     }
     await conn.query('UPDATE orders SET total_amount = ? WHERE id = ?', [total, orderId]);
     await logStatus(conn, orderId, null, header.status, req.user.email, 'Tạo đơn');
     await conn.commit();
-    res.status(201).json({ id: orderId, order_code: header.order_code });
+    res.status(201).json({ id: orderId, order_code: header.order_code, item_ids: itemIds });
   } catch (e) {
     await conn.rollback();
     throw e;

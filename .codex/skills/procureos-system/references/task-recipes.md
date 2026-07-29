@@ -89,6 +89,19 @@ Checklist:
 2. Whitelist any selectable date column before it enters SQL.
 3. Ensure notification panels are not clipped by sidebar overflow or a lower stacking context; check a narrow viewport as well as desktop.
 
+## Batch quotation and attachment checklist
+
+1. Keep each source file and supplier group separate; never auto-merge ambiguous supplier names.
+2. System supplier selection wins over the AI source name. Create a new master supplier only from the Apply action.
+3. Persist one attachment blob plus `order_quote_attachments` links after an order/item exists; test link deletion and demo parity.
+4. Test Add vs explicit Update in Order Detail; AI must not overwrite an existing line automatically.
+
+## Change work queues or supplier suggestions
+
+1. Preserve individual line mutations and the existing bulk-progress confirmation.
+2. Return BG metadata in both MySQL and demo item-list responses; retain `quotation_url` fallback.
+3. Keep recommendations server-side and advisory. Test that applying one uses the normal line-update route and that no recommendation changes a supplier automatically.
+
 ## Validate
 
 Backend:
@@ -113,3 +126,11 @@ Smoke:
 ```powershell
 Invoke-RestMethod http://localhost:8080/api/health
 ```
+
+## Change quotation extraction
+
+1. Keep `/quotation-extractions/extract` server-side and role-protected; do not put an AI key or provider call in React.
+2. Validate the strict review item shape (`item_name`, `quantity`, `unit_price`, `vat_percent`, `supplier_name`, `raw`) before returning it. For OpenAI Structured Outputs, keep `raw` a string/source excerpt rather than an open-ended object, because strict schemas require a closed property set.
+3. Preserve a raw source excerpt and parser sheet/row (when available) so the user can compare before applying.
+4. Update `CreateOrder.jsx` and `server/src/routes/demo.js` together; demo must identify parser/mock results and never create an order automatically.
+5. Validate file signature and 5 MB limits for PDF/PNG/JPEG/WEBP. Send inline PDF content as `data:application/pdf;base64,...`; images use a typed data URL. Run `node --check server/src/lib/quotationExtraction.js`, `node --check server/src/routes/quotationExtraction.js`, frontend build, then smoke the endpoint with a CSV upload after demo login. Test a real PDF/image only after a user-configured OpenAI key is confirmed; do not print the key.

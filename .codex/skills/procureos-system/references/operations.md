@@ -30,6 +30,27 @@ Demo login:
 admin@garena.vn / admin123
 ```
 
+## AI quotation extraction
+
+The server accepts Excel/XLSX/CSV, PDF, PNG/JPG/JPEG, and WEBP quotation files up to 5 MB. PDF/image extraction uses the OpenAI Responses API as multimodal input. `DEMO_MODE=1` uses the internal spreadsheet parser unless an administrator explicitly sets `DEMO_ALLOW_EXTERNAL_AI=1` together with a valid OpenAI configuration; the UI identifies local results as demo/parser results.
+
+For production AI-assisted normalization, configure server environment variables (never expose them to the React app):
+
+```env
+AI_PROVIDER=openai
+AI_API_KEY=...
+AI_MODEL=gpt-4o-mini
+# Optional: stronger model used only for quotation extraction
+QUOTATION_AI_MODEL=gpt-4o
+DEMO_ALLOW_EXTERNAL_AI=0
+```
+
+Only `AI_PROVIDER=openai` with a nonempty key enables the external AI call. In demo mode, it additionally requires `DEMO_ALLOW_EXTERNAL_AI=1`. The extraction adapter sends bounded raw spreadsheet rows or a PDF/image multimodal input to OpenAI with a strict JSON schema for item, quantity, price, VAT%, supplier, and a source excerpt string. Inline PDF input is serialized as a `data:application/pdf;base64,...` URL. Without AI configuration, ProcureOS uses the local parser for spreadsheets and rejects PDF/images clearly.
+
+Batch review limits are 3 files / 12 MB total, while each file remains capped at 5 MB. In DEMO_MODE, supplier creation still goes through `/suppliers` only after Apply; no secret is exposed to the browser.
+
+The supplier-suggestion demo is deterministic `demo-rule-based` ranking from in-memory purchase history. It is advisory only and never changes a line supplier until a user applies the suggestion.
+
 ## Local MySQL Mode
 
 Use `.env` DB settings:

@@ -82,6 +82,20 @@ Guard arrays before `.map()` when touching dashboards or demo routes.
 - Keep CRUD pages using generic `CrudPage` when possible.
 - Avoid broad redesign unless explicitly requested.
 
+## Create-order quotation review
+
+`CreateOrder.jsx` has a **Tải báo giá & AI nhập liệu** action. It uploads a spreadsheet/CSV, PDF, or PNG/JPG/WEBP image to the server extraction endpoint, then shows an editable review table before it changes the manual order form. PDF/image extraction requires configured OpenAI multimodal AI; spreadsheets retain a local-parser fallback. Each review row requires item name, positive quantity, price, VAT%, and a selected master supplier. The original browser file can be opened for comparison; Apply only fills the existing order-line form and never persists an order by itself. The review shows parser sheet/row or an AI source excerpt when available.
+
+## Batch quotation review
+
+`QuotationReview.jsx` is shared by Create Order and Order Detail. It supports three independent source files per batch, per-file/per-row selection, original-file preview, and explicit master supplier selection. Exact normalized matches are preselected; ambiguous names require choice. A new supplier is created only after the reviewer checks the option and applies. Create Order appends rows; Order Detail requires explicit add versus update targeting and lists linked quote files.
+
+## Order and item work queue
+
+`Orders.jsx` is table-first: compact filters (search, status, team, supplier, date), neutral quick filters, and a list/status-group view. `ItemBoard.jsx` keeps row-level bulk actions and can group the same work queue by order, supplier, or line status. It displays the BG link/count from the item API. Keep status color limited to status badges; warnings should be neutral icon/text with tooltips.
+
+`OrderDetail.jsx` renders linked quotation files in the BG cell. It first uses item links, then supplier-level quote links, and falls back to legacy `quotation_url`; a count opens a small file chooser. The attachment list remains as an audit/manage fallback, not the primary retrieval path.
+
 ## Build Notes
 
 Development:

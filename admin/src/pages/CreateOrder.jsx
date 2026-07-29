@@ -5,166 +5,52 @@ import { useMeta } from '../meta.jsx';
 import { useAuth } from '../auth.jsx';
 import { LOAI_HH, DIEM_NHAN, HANG_MUC } from '../constants.js';
 import SupplierSelect from '../components/SupplierSelect.jsx';
+import QuotationReview from '../components/QuotationReview.jsx';
+import Modal from '../components/Modal.jsx';
 
-const emptyLine = () => ({
-  loai_hh: 'Vật phẩm', item_name: '', description: '', quantity: 1, unit_price: 0, vatPct: 8,
-  unit: 'cái', design_link: '', note: '', so_pr: '', supplier_id: '', master_contract: '',
-});
+const emptyLine = () => ({ loai_hh: 'Vật phẩm', item_name: '', description: '', quantity: 1, unit_price: 0, vatPct: 8, unit: 'cái', design_link: '', note: '', so_pr: '', supplier_id: '', master_contract: '' });
 
 export default function CreateOrder() {
-  const nav = useNavigate();
-  const { user } = useAuth();
-  const { states, L } = useMeta();
-  const [teams, setTeams] = useState([]);
-  const [diemCustom, setDiemCustom] = useState(false);
-  const [header, setHeader] = useState({
-    status: 'new', receiving_point: '', request_date: '', expected_date: '',
-    requester_email: user.email, requester_name: user.name, team_id: '', project_name: '',
-    hang_muc: 'Mua sắm / sản xuất', pm: '',
-  });
-  const [lines, setLines] = useState([emptyLine()]);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-
-  useEffect(() => {
-    api.get('/teams?limit=200').then((r) => setTeams(r.data));
-  }, []);
-
-  const setH = (k, v) => setHeader({ ...header, [k]: v });
-  const setLine = (i, patch) => setLines(lines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
-  const pickNcc = (i, sid, s) => setLine(i, { supplier_id: sid, master_contract: s?.master_contract || '' });
-  const addLine = () => setLines([...lines, emptyLine()]);
-  const rmLine = (i) => setLines(lines.filter((_, idx) => idx !== i));
-
-  const calc = (l) => {
-    const tt = Math.round(Number(l.quantity || 0) * Number(l.unit_price || 0));
-    const thue = Math.round(tt * Number(l.vatPct || 0) / 100);
-    return { thanhTien: tt, tienThue: thue, tong: tt + thue };
+  const nav = useNavigate(); const { user } = useAuth(); const { states, L } = useMeta();
+  const [teams, setTeams] = useState([]); const [diemCustom, setDiemCustom] = useState(false);
+  const [header, setHeader] = useState({ status: 'new', receiving_point: '', request_date: '', expected_date: '', requester_email: user.email, requester_name: user.name, team_id: '', project_name: '', hang_muc: 'Mua sắm / sản xuất', pm: '' });
+  const [lines, setLines] = useState([emptyLine()]); const [pendingQuotes, setPendingQuotes] = useState([]); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const [suggestLine, setSuggestLine] = useState(null); const [suggestOpen, setSuggestOpen] = useState(false);
+  useEffect(() => { api.get('/teams?limit=200').then((r) => setTeams(r.data || [])); }, []);
+  const setH = (key, value) => setHeader({ ...header, [key]: value });
+  const setLine = (i, patch) => setLines((old) => old.map((line, index) => index === i ? { ...line, ...patch } : line));
+  const calc = (line) => { const amount = Math.round(Number(line.quantity || 0) * Number(line.unit_price || 0)); const tax = Math.round(amount * Number(line.vatPct || 0) / 100); return { amount, tax, total: amount + tax }; };
+  const applyQuotes = async (rows) => {
+    const base = lines.length;
+    setLines((old) => [...old, ...rows.map((row) => ({ ...emptyLine(), item_name: row.item_name, quantity: row.quantity, unit_price: row.unit_price, vatPct: row.vat_percent, supplier_id: row.supplier_id, note: `Nguồn báo giá: ${row.file.filename}` }))]);
+    setPendingQuotes((old) => [...old, ...rows.map((row, index) => ({ line_index: base + index, supplier_id: row.supplier_id, filename: row.file.filename, data_base64: row.file.data_base64, extraction_batch: row.file.client_id, source_fingerprint: row.file.fingerprint, source_supplier_name: row.supplier_name }))]);
   };
-  const grandTotal = lines.reduce((s, l) => s + calc(l).tong, 0);
-
   const save = async () => {
-    setErr('');
-    if (!header.team_id) { setErr('Vui lòng chọn Team'); return; }
-    const items = lines.filter((l) => l.item_name).map((l) => ({
-      loai_hh: l.loai_hh, item_name: l.item_name, description: l.description, unit: l.unit,
-      quantity: Number(l.quantity || 0), unit_price: Number(l.unit_price || 0), vat_rate: Number(l.vatPct || 0) / 100,
-      design_link: l.design_link, note: l.note, so_pr: l.so_pr,
-      supplier_id: l.supplier_id || null, master_contract: l.master_contract,
-    }));
-    if (!items.length) { setErr('Cần ít nhất 1 dòng hàng có tên'); return; }
+    setErr(''); if (!header.team_id) return setErr('Vui lòng chọn Team');
+    const items = lines.filter((line) => line.item_name).map((line) => ({ loai_hh: line.loai_hh, item_name: line.item_name, description: line.description, unit: line.unit, quantity: Number(line.quantity || 0), unit_price: Number(line.unit_price || 0), vat_rate: Number(line.vatPct || 0) / 100, design_link: line.design_link, note: line.note, so_pr: line.so_pr, supplier_id: line.supplier_id || null, master_contract: line.master_contract }));
+    if (!items.length) return setErr('Cần ít nhất một dòng hàng có tên');
     setBusy(true);
     try {
-      const r = await api.post('/orders', { ...header, team_id: header.team_id || null, items });
-      nav(`/orders/${r.id}`);
+      const result = await api.post('/orders', { ...header, team_id: header.team_id || null, items });
+      const grouped = new Map();
+      pendingQuotes.forEach((quote) => { const group = grouped.get(quote.source_fingerprint) || { ...quote, item_ids: [] }; const itemId = result.item_ids?.[quote.line_index]; if (itemId) group.item_ids.push(itemId); grouped.set(quote.source_fingerprint, group); });
+      for (const quote of grouped.values()) if (quote.data_base64) await api.post(`/quotation-extractions/orders/${result.id}/attachments`, quote);
+      nav(`/orders/${result.id}`);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
-
-  return (
-    <>
-      <div className="topbar"><h1>Tạo đơn mới</h1><button onClick={() => nav('/orders')}>← Danh sách</button></div>
-      <div className="content">
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>📋 Thông tin đơn hàng</h3>
-          <div className="row">
-            <div className="field"><label>{L('create_order.field.ma_dh', 'MA_DH')}</label><input value="Tự sinh khi lưu (RQ-TEAM-YY-NNNN)" disabled /></div>
-            <div className="field"><label>{L('create_order.field.tien_trinh', 'Tiến trình')}</label>
-              <select value={header.status} onChange={(e) => setH('status', e.target.value)}>
-                {states.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
-              </select>
-            </div>
-            <div className="field"><label>{L('create_order.field.diem_nhan', 'Điểm nhận')}</label>
-              <select value={diemCustom ? '__custom' : header.receiving_point} onChange={(e) => {
-                if (e.target.value === '__custom') { setDiemCustom(true); setH('receiving_point', ''); }
-                else { setDiemCustom(false); setH('receiving_point', e.target.value); }
-              }}>
-                <option value="">-- Chọn điểm nhận --</option>
-                {DIEM_NHAN.map((d) => <option key={d} value={d}>{d}</option>)}
-                <option value="__custom">Khác (nhập thủ công)</option>
-              </select>
-              {diemCustom && <input style={{ marginTop: 6 }} placeholder="Nhập địa chỉ" value={header.receiving_point} onChange={(e) => setH('receiving_point', e.target.value)} />}
-            </div>
-          </div>
-          <div className="row">
-            <div className="field"><label>{L('create_order.field.ngay_yc', 'Ngày YC')}</label><input type="date" value={header.request_date} onChange={(e) => setH('request_date', e.target.value)} /></div>
-            <div className="field"><label>{L('create_order.field.ngay_nhan', 'Ngày nhận')}</label><input type="date" value={header.expected_date} onChange={(e) => setH('expected_date', e.target.value)} /></div>
-            <div className="field"><label>{L('create_order.field.email', 'Email')}</label><input type="email" value={header.requester_email} onChange={(e) => setH('requester_email', e.target.value)} /></div>
-          </div>
-          <div className="row">
-            <div className="field"><label>{L('create_order.field.ten_nguoi_yc', 'Tên người YC')}</label><input value={header.requester_name} onChange={(e) => setH('requester_name', e.target.value)} /></div>
-            <div className="field"><label>{L('create_order.field.team', 'Team *')}</label>
-              <select value={header.team_id} onChange={(e) => {
-                const t = teams.find((x) => String(x.id) === e.target.value);
-                setHeader({ ...header, team_id: e.target.value, pm: t?.lead_name || header.pm });
-              }}>
-                <option value="">-- Chọn team --</option>
-                {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-            <div className="field"><label>{L('create_order.field.ten_du_an', 'Tên dự án')}</label><input value={header.project_name} onChange={(e) => setH('project_name', e.target.value)} /></div>
-          </div>
-          <div className="row">
-            <div className="field"><label>{L('create_order.field.hang_muc', 'Hạng mục')}</label>
-              <select value={header.hang_muc} onChange={(e) => setH('hang_muc', e.target.value)}>
-                {HANG_MUC.map((h) => <option key={h} value={h}>{h}</option>)}
-              </select>
-            </div>
-            <div className="field"><label>{L('create_order.field.pm', 'PM')}</label><input value={header.pm} onChange={(e) => setH('pm', e.target.value)} /></div>
-            <div className="field" />
-          </div>
-        </div>
-
-        <div className="card" style={{ marginTop: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0 }}>📦 Chi tiết hàng hóa / dịch vụ</h3>
-            <button className="btn-primary btn-sm" onClick={addLine}>+ Thêm dòng</button>
-          </div>
-          <div className="table-wrap" style={{ marginTop: 12 }}>
-            <table>
-              <thead><tr>
-                <th>{L('create_order.col.loai_hh', 'Loại HH')}</th><th>{L('create_order.col.ten_hang', 'Tên hàng')}</th><th>{L('create_order.col.mo_ta', 'Mô tả')}</th>
-                <th>{L('create_order.col.sl', 'SL')}</th><th>{L('create_order.col.don_gia', 'Đơn giá')}</th><th>{L('create_order.col.vat', 'VAT%')}</th>
-                <th>{L('create_order.col.tien_thue', 'Tiền thuế')}</th><th>{L('create_order.col.thanh_tien', 'Thành tiền')}</th><th>{L('create_order.col.tong', 'Tổng')}</th>
-                <th>{L('create_order.col.dvt', 'ĐVT')}</th><th>{L('create_order.col.thiet_ke', 'Thiết kế')}</th><th>{L('create_order.col.ghi_chu', 'Ghi chú')}</th>
-                <th>{L('create_order.col.so_pr', 'Số PR')}</th><th>{L('create_order.col.ncc', 'NCC')}</th><th>{L('create_order.col.master', 'Master')}</th><th></th>
-              </tr></thead>
-              <tbody>
-                {lines.map((l, i) => {
-                  const c = calc(l);
-                  return (
-                    <tr key={i}>
-                      <td><select style={{ minWidth: 120 }} value={l.loai_hh} onChange={(e) => setLine(i, { loai_hh: e.target.value })}>{LOAI_HH.map((x) => <option key={x} value={x}>{x}</option>)}</select></td>
-                      <td><input style={{ minWidth: 140 }} value={l.item_name} onChange={(e) => setLine(i, { item_name: e.target.value })} /></td>
-                      <td><input style={{ minWidth: 120 }} value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} /></td>
-                      <td><input type="number" style={{ width: 60 }} value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} /></td>
-                      <td><input type="number" style={{ width: 100 }} value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} /></td>
-                      <td><input type="number" style={{ width: 55 }} value={l.vatPct} onChange={(e) => setLine(i, { vatPct: e.target.value })} /></td>
-                      <td className="r muted">{fmtVND(c.tienThue)}</td>
-                      <td className="r muted">{fmtVND(c.thanhTien)}</td>
-                      <td className="r"><strong>{fmtVND(c.tong)}</strong></td>
-                      <td><input style={{ width: 60 }} value={l.unit} onChange={(e) => setLine(i, { unit: e.target.value })} /></td>
-                      <td><input style={{ width: 100 }} placeholder="Link" value={l.design_link} onChange={(e) => setLine(i, { design_link: e.target.value })} /></td>
-                      <td><input style={{ width: 100 }} value={l.note} onChange={(e) => setLine(i, { note: e.target.value })} /></td>
-                      <td><input style={{ width: 80 }} value={l.so_pr} onChange={(e) => setLine(i, { so_pr: e.target.value })} /></td>
-                      <td><SupplierSelect minWidth={150} value={l.supplier_id} onChange={(v, s) => pickNcc(i, v, s)} /></td>
-                      <td><input style={{ width: 90 }} value={l.master_contract} onChange={(e) => setLine(i, { master_contract: e.target.value })} /></td>
-                      <td><button className="btn-sm btn-danger" onClick={() => rmLine(i)}>×</button></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
-            <div>Tổng cộng: <strong style={{ fontSize: 18 }}>{fmtVND(grandTotal)}</strong></div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => { setLines([emptyLine()]); }}>Reset dòng</button>
-              <button className="btn-primary" onClick={save} disabled={busy}>{busy ? 'Đang lưu…' : '💾 Lưu đơn hàng'}</button>
-            </div>
-          </div>
-          {err && <div className="error">{err}</div>}
-        </div>
-      </div>
-    </>
-  );
+  const total = lines.reduce((sum, line) => sum + calc(line).total, 0);
+  return <><div className="topbar"><h1>Tạo đơn mới</h1><button onClick={() => nav('/orders')}>← Danh sách</button></div><div className="content">
+    <div className="card"><h3 style={{ marginTop: 0 }}>📋 Thông tin đơn hàng</h3>
+      <div className="row"><div className="field"><label>MA_DH</label><input value="Tự sinh khi lưu (RQ-TEAM-YY-NNNN)" disabled /></div><div className="field"><label>Tiến trình</label><select value={header.status} onChange={(e) => setH('status', e.target.value)}>{states.map((state) => <option key={state.code} value={state.code}>{state.name}</option>)}</select></div><div className="field"><label>Điểm nhận</label><select value={diemCustom ? '__custom' : header.receiving_point} onChange={(e) => { if (e.target.value === '__custom') { setDiemCustom(true); setH('receiving_point', ''); } else { setDiemCustom(false); setH('receiving_point', e.target.value); } }}><option value="">-- Chọn điểm nhận --</option>{DIEM_NHAN.map((entry) => <option key={entry}>{entry}</option>)}<option value="__custom">Khác</option></select>{diemCustom && <input value={header.receiving_point} onChange={(e) => setH('receiving_point', e.target.value)} />}</div></div>
+      <div className="row"><div className="field"><label>Ngày YC</label><input type="date" value={header.request_date} onChange={(e) => setH('request_date', e.target.value)} /></div><div className="field"><label>Ngày nhận</label><input type="date" value={header.expected_date} onChange={(e) => setH('expected_date', e.target.value)} /></div><div className="field"><label>Email</label><input value={header.requester_email} onChange={(e) => setH('requester_email', e.target.value)} /></div></div>
+      <div className="row"><div className="field"><label>Tên người YC</label><input value={header.requester_name} onChange={(e) => setH('requester_name', e.target.value)} /></div><div className="field"><label>Team *</label><select value={header.team_id} onChange={(e) => { const team = teams.find((x) => String(x.id) === e.target.value); setHeader({ ...header, team_id: e.target.value, pm: team?.lead_name || header.pm }); }}><option value="">-- Chọn team --</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></div><div className="field"><label>Tên dự án</label><input value={header.project_name} onChange={(e) => setH('project_name', e.target.value)} /></div></div>
+      <div className="row"><div className="field"><label>Hạng mục</label><select value={header.hang_muc} onChange={(e) => setH('hang_muc', e.target.value)}>{HANG_MUC.map((entry) => <option key={entry}>{entry}</option>)}</select></div><div className="field"><label>PM</label><input value={header.pm} onChange={(e) => setH('pm', e.target.value)} /></div></div>
+    </div>
+    <QuotationReview onApply={applyQuotes} />
+    <div className="card" style={{ marginTop: 12, padding: 10 }}><label>Đề xuất NCC cho dòng</label><div style={{ display: 'flex', gap: 8 }}><select value={suggestLine ?? ''} onChange={(e) => setSuggestLine(e.target.value === '' ? null : Number(e.target.value))}><option value="">Chọn dòng hàng</option>{lines.map((line, i) => <option key={i} value={i}>{line.item_name || `Dòng ${i + 1}`}</option>)}</select><button className="btn-sm" disabled={suggestLine === null || !lines[suggestLine]?.item_name?.trim()} onClick={() => setSuggestOpen(true)}>✨ Đề xuất NCC</button></div>{suggestLine !== null && !lines[suggestLine]?.item_name?.trim() && <div className="muted">Nhập tên hàng trước khi đề xuất NCC.</div>}</div>
+    {suggestOpen && <Suggestions line={lines[suggestLine]} onApply={(s) => { setLine(suggestLine, { supplier_id: s.supplier_id, master_contract: s.evidence?.master_contract || lines[suggestLine].master_contract }); setSuggestOpen(false); }} onClose={() => setSuggestOpen(false)} />}
+    <div className="card" style={{ marginTop: 16 }}><div style={{ display: 'flex', justifyContent: 'space-between' }}><h3 style={{ margin: 0 }}>📦 Chi tiết hàng hóa / dịch vụ</h3><button className="btn-primary btn-sm" onClick={() => setLines((old) => [...old, emptyLine()])}>+ Thêm dòng</button></div><div className="table-wrap" style={{ marginTop: 12 }}><table><thead><tr><th>Loại HH</th><th>Tên hàng</th><th>Mô tả</th><th>SL</th><th>Đơn giá</th><th>VAT%</th><th>Tiền thuế</th><th>Thành tiền</th><th>Tổng</th><th>ĐVT</th><th>Thiết kế</th><th>Ghi chú</th><th>Số PR</th><th>NCC</th><th>Master</th><th /></tr></thead><tbody>{lines.map((line, i) => { const value = calc(line); return <tr key={i}><td><select value={line.loai_hh} onChange={(e) => setLine(i, { loai_hh: e.target.value })}>{LOAI_HH.map((entry) => <option key={entry}>{entry}</option>)}</select></td><td><input value={line.item_name} onChange={(e) => setLine(i, { item_name: e.target.value })} /></td><td><input value={line.description} onChange={(e) => setLine(i, { description: e.target.value })} /></td><td><input type="number" value={line.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} /></td><td><input type="number" value={line.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} /></td><td><input type="number" value={line.vatPct} onChange={(e) => setLine(i, { vatPct: e.target.value })} /></td><td>{fmtVND(value.tax)}</td><td>{fmtVND(value.amount)}</td><td><strong>{fmtVND(value.total)}</strong></td><td><input value={line.unit} onChange={(e) => setLine(i, { unit: e.target.value })} /></td><td><input value={line.design_link} onChange={(e) => setLine(i, { design_link: e.target.value })} /></td><td><input value={line.note} onChange={(e) => setLine(i, { note: e.target.value })} /></td><td><input value={line.so_pr} onChange={(e) => setLine(i, { so_pr: e.target.value })} /></td><td><SupplierSelect value={line.supplier_id} onChange={(supplierId, supplier) => setLine(i, { supplier_id: supplierId, master_contract: supplier?.master_contract || line.master_contract })} /></td><td><input value={line.master_contract} onChange={(e) => setLine(i, { master_contract: e.target.value })} /></td><td><button className="btn-sm btn-danger" onClick={() => setLines((old) => old.filter((_, index) => index !== i))}>×</button></td></tr>; })}</tbody></table></div><div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14 }}><div>Tổng cộng: <strong>{fmtVND(total)}</strong></div><div><button onClick={() => setLines([emptyLine()])}>Reset dòng</button>{' '}<button className="btn-primary" disabled={busy} onClick={save}>{busy ? 'Đang lưu…' : '💾 Lưu đơn hàng'}</button></div></div>{err && <div className="error">{err}</div>}</div>
+  </div></>;
 }
+
+function Suggestions({ line, onApply, onClose }) { const [data, setData] = useState(null); const [err, setErr] = useState(''); useEffect(() => { api.post('/orders/items/supplier-suggestions', line).then(setData).catch((e) => setErr(e.message)); }, []); return <Modal title="Đề xuất NCC" onClose={onClose} hideSubmit>{err && <div className="error">{err}</div>}{!data && !err ? <div>Đang tải…</div> : (data?.suggestions || []).map((s) => <div key={s.supplier_id} className="card" style={{ padding: 8, marginBottom: 6 }}><strong>{s.supplier_name}</strong> · {s.score}/100<div className="muted">{s.reason}</div><button className="btn-sm btn-primary" onClick={() => onApply(s)}>Áp dụng NCC này</button></div>)}</Modal>; }

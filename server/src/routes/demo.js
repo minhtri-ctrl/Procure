@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authRequired, signToken } from '../middleware/auth.js';
 import { config } from '../config.js';
+import { extractQuotation, QUOTATION_MAX_BYTES } from '../lib/quotationExtraction.js';
 
 const router = Router();
 
@@ -38,6 +39,8 @@ const suppliers = [
   { id: 1, name: 'Công ty TNHH Demo Supply', vendor_no: 'NCC001', contact_name: 'Lan', contact_email: 'lan@vendor.vn', payment_term_days: 14, master_contract: 'MC-2026-001', is_active: 1 },
   { id: 2, name: 'Dịch vụ Sự kiện Sao Việt', vendor_no: 'NCC002', contact_name: 'Huy', contact_email: 'huy@vendor.vn', payment_term_days: 30, master_contract: '', is_active: 1 },
 ];
+const quoteAttachments = [];
+const demoFiles = [];
 
 const products = [
   { id: 1, sku: 'MKT-PS-2607-0001', name: 'Standee sự kiện', category_id: 1, category_name: 'POSM', unit: 'cái', default_price: 450000, vat_rate: 0.08, supplier_id: 1, supplier_name: suppliers[0].name, is_active: 1 },
@@ -96,6 +99,13 @@ let orders = [
     ],
   },
 ];
+
+// Demo fixtures deliberately include both a line-linked and an order-level quotation.
+quoteAttachments.push(
+  { id: 1, order_id: 1, order_item_id: 1, supplier_id: 1, attachment_id: 9001, filename: 'bao-gia-standee-demo.txt', url: '/api/uploads/9001', supplier_name: suppliers[0].name, source_supplier_name: suppliers[0].name, item_name: orders[0].items[0].item_name, created_at: '2026-07-10 09:00:00' },
+  { id: 2, order_id: 1, order_item_id: null, supplier_id: 1, attachment_id: 9002, filename: 'bao-gia-cap-ncc-demo.txt', url: '/api/uploads/9002', supplier_name: suppliers[0].name, source_supplier_name: suppliers[0].name, item_name: null, created_at: '2026-07-10 09:01:00' },
+);
+demoFiles.push({ id: 9001, mime: 'text/plain', data_base64: Buffer.from('Bao gia demo theo dong hang').toString('base64') }, { id: 9002, mime: 'text/plain', data_base64: Buffer.from('Bao gia demo cap NCC').toString('base64') });
 
 const contracts = [
   { id: 1, contract_no: 'DDH-2607-0001', type: 'DDH', amount: 27000000, status: 'Nháp', order_id: 1, order_code: 'RQ-MKT-26-0001', project_name: orders[0].project_name, supplier_name: suppliers[0].name, file_url: '/api/contracts/1/document', created_at: '2026-07-12 09:00:00' },
@@ -156,6 +166,16 @@ function demoOrderSuppliers(order) {
   return [...new Map(order.items.filter((it) => it.supplier_id).map((it) => [it.supplier_id, it])).values()].map((it) => { const data = order.order_supplier_data?.[it.supplier_id] || {}; const supplier_subtotal = order.items.filter((x) => x.supplier_id === it.supplier_id).reduce((s, x) => s + Number(x.line_total || 0), 0); const discount_amount = Math.min(Number(data.discount_amount || 0), supplier_subtotal); return { supplier_id: it.supplier_id, supplier_name: it.supplier_name, ...data, supplier_subtotal, discount_amount, supplier_total: supplier_subtotal - discount_amount, custom_fields: data.custom_fields || {} }; });
 }
 
+function demoSupplierSuggestions(body = {}) {
+  if (!String(body.item_name || '').trim()) return { suggestions: [], mode: 'demo-rule-based', message: 'Chưa đủ dữ liệu để đề xuất. Bạn vẫn có thể chọn NCC thủ công.' };
+  const term = String(body.item_name).toLowerCase();
+  return { mode: 'demo-rule-based', suggestions: suppliers.map((supplier) => {
+    const past = orders.flatMap((order) => order.items).filter((item) => String(item.supplier_id) === String(supplier.id));
+    const match = past.some((item) => term.includes(String(item.item_name || '').toLowerCase().split(' ')[0] || ''));
+    return { supplier_id: supplier.id, supplier_name: supplier.name, score: Math.min(96, 30 + past.length * 15 + (match ? 35 : 0) + (supplier.master_contract ? 10 : 0)), reason: match ? 'Demo: khớp lịch sử mua mặt hàng tương tự.' : 'Demo: NCC hoạt động có lịch sử cung cấp.', evidence: { purchase_count: past.length, recent_price: past[0]?.unit_price || null, master_contract: supplier.master_contract || null }, warning: past.length ? null : 'Ít dữ liệu lịch sử' };
+  }).sort((a, b) => b.score - a.score).slice(0, 5) };
+}
+
 router.post('/auth/login', (req, res) => {
   const email = String(req.body?.email || '').toLowerCase().trim();
   const password = String(req.body?.password || '');
@@ -206,12 +226,13 @@ router.get('/suppliers', (req, res) => ok(res, list(suppliers)));
 router.get('/signatories', (req, res) => ok(res, list([{ id: 1, role_key: 'contract', scope: 'default', name: 'Vũ Chí Công', title: 'Giám đốc', is_active: 1 }])));
 router.post('/teams', (req, res) => ok(res, { id: Date.now() }));
 router.post('/categories', (req, res) => ok(res, { id: Date.now() }));
-router.post('/suppliers', (req, res) => ok(res, { id: Date.now() }));
+router.post('/suppliers', (req, res) => { const name = String(req.body?.name || '').trim(); if (!name) return res.status(400).json({ error: 'Tên NCC là bắt buộc' }); const found = suppliers.find((s) => s.name.trim().toLowerCase() === name.toLowerCase()); if (found) return ok(res, { id: found.id, existing: true }); const id = Math.max(0, ...suppliers.map((s) => s.id)) + 1; suppliers.push({ id, name, vendor_no: '', is_active: 1 }); ok(res, { id }); });
 router.post('/signatories', (req, res) => ok(res, { id: Date.now() }));
 router.put('/:master(teams|categories|suppliers|signatories)/:id', (req, res) => ok(res));
 router.delete('/:master(teams|categories|suppliers|signatories)/:id', (req, res) => ok(res));
 
 router.get('/orders/count', (req, res) => ok(res, { total: orders.length }));
+router.post('/orders/items/supplier-suggestions', (req, res) => ok(res, demoSupplierSuggestions(req.body)));
 router.get('/orders/items/all', (req, res) => {
   const rows = orders.flatMap((o) => o.items.map((it) => ({
     ...it,
@@ -223,6 +244,8 @@ router.get('/orders/items/all', (req, res) => {
     actual_date: o.actual_date,
     total_amount: o.total_amount,
     team_name: o.team_name,
+    quote_file_count: quoteAttachments.filter((file) => String(file.order_item_id) === String(it.id)).length,
+    quote_file_url: quoteAttachments.find((file) => String(file.order_item_id) === String(it.id))?.url || null,
     flags: { overdue_receipt: false, due_soon_receipt: true, due_soon_payment: false, missing_contract: false, missing_supplier: !it.supplier_id, missing_pr: !it.so_pr, missing_design_link: !it.design_link, missing_price: !Number(it.unit_price) },
     line_status: it.progress,
   })));
@@ -247,12 +270,12 @@ router.post('/orders', (req, res) => {
     history: [], ...req.body, items, team_name: team?.name || '', supplier_name: supplierNames.join(', '),
   };
   orders.unshift(order);
-  ok(res, { id, order_code: order.order_code });
+  ok(res, { id, order_code: order.order_code, item_ids: items.map((item) => item.id) });
 });
 router.get('/orders/:id', (req, res) => {
   const order = orders.find((o) => String(o.id) === String(req.params.id));
   if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn demo' });
-  ok(res, { ...order, order_suppliers: demoOrderSuppliers(order), history: [{ id: 1, order_id: order.id, from_status: null, to_status: order.status, changed_by: user.email, note: 'Demo history', created_at: '2026-07-12 09:00:00' }] });
+  ok(res, { ...order, order_suppliers: demoOrderSuppliers(order), quote_attachments: quoteAttachments.filter((file) => String(file.order_id) === String(order.id)), history: [{ id: 1, order_id: order.id, from_status: null, to_status: order.status, changed_by: user.email, note: 'Demo history', created_at: '2026-07-12 09:00:00' }] });
 });
 router.put('/orders/:id', (req, res) => {
   const order = orders.find((entry) => String(entry.id) === String(req.params.id));
@@ -329,12 +352,36 @@ router.post('/users', (req, res) => ok(res, { id: Date.now() }));
 router.put('/users/:id', (req, res) => ok(res));
 router.delete('/users/:id', (req, res) => ok(res));
 
+router.get('/uploads/:id', (req, res) => { const file = demoFiles.find((entry) => String(entry.id) === String(req.params.id)); if (!file) return res.status(404).send('Không tìm thấy file demo'); res.type(file.mime || 'application/octet-stream').send(Buffer.from(file.data_base64, 'base64')); });
 router.post('/uploads/:kind/:id', (req, res) => ok(res, { id: Date.now(), url: '/api/uploads/demo' }));
 router.delete('/uploads/:kind/:id', (req, res) => ok(res));
 router.post('/import', (req, res) => ok(res, { ok: true, teams: 2, suppliers: 2, products: 2, orders: 2 }));
 router.post('/suppliers/import', (req, res) => ok(res, { ok: true, imported: 2, updated: 0, skipped: 0 }));
 router.get('/ai/status', (req, res) => ok(res, { provider: 'demo', model: 'intent-router-demo', enabled: false }));
 router.post('/ai/chat', (req, res) => ok(res, { answer: 'Demo AI: hệ thống có 2 đơn hàng, 2 nhà cung cấp, 2 SKU và automation đang bật ở chế độ xem thử.' }));
+function demoMatch(name) { const key = String(name || '').trim().toLowerCase().replace(/\s+/g, ' '); const matches = suppliers.filter((s) => s.name.trim().toLowerCase().replace(/\s+/g, ' ') === key); return matches.length === 1 ? { status: 'matched', supplier_id: matches[0].id, supplier_name: matches[0].name } : { status: key ? 'new' : 'missing', supplier_id: null }; }
+function demoExtract(file) { return extractQuotation({ filename: file.filename, dataBase64: file.data_base64 }).then((result) => ({ client_id: file.client_id || '', filename: file.filename, fingerprint: `${file.filename}:${String(file.data_base64).length}`, status: 'success', ...result, items: (result.items || []).map((item) => ({ ...item, supplier_match: demoMatch(item.supplier_name) })) })).catch((error) => ({ client_id: file.client_id || '', filename: file.filename, status: 'error', error: error.message })); }
+router.post('/quotation-extractions/extract-batch', (req, res, next) => {
+  const files = Array.isArray(req.body?.files) ? req.body.files : [];
+  if (!files.length || files.length > 3) return res.status(400).json({ error: 'Chọn từ 1 đến 3 file báo giá.' });
+  Promise.all(files.map(demoExtract)).then((results) => ok(res, { files: results, limits: { max_bytes: QUOTATION_MAX_BYTES, max_files: 3, max_batch_bytes: 12 * 1024 * 1024, accepted: ['.xlsx', '.xls', '.csv', '.pdf', '.png', '.jpg', '.jpeg', '.webp'] } })).catch(next);
+});
+router.post('/quotation-extractions/extract', (req, res, next) => {
+  try {
+    const { filename, data_base64: dataBase64 } = req.body || {};
+    if (!filename || !dataBase64) return res.status(400).json({ error: 'Cần chọn file báo giá.' });
+    demoExtract({ filename, data_base64: dataBase64 }).then((result) => result.status === 'error' ? res.status(400).json({ error: result.error }) : ok(res, { ...result, suppliers: [...new Set(result.items.map((item) => item.supplier_name).filter(Boolean))], limits: { max_bytes: QUOTATION_MAX_BYTES, accepted: ['.xlsx', '.xls', '.csv', '.pdf', '.png', '.jpg', '.jpeg', '.webp'] } })).catch(next);
+  } catch (error) { next(error); }
+});
+router.get('/quotation-extractions/orders/:orderId/attachments', (req, res) => ok(res, { data: quoteAttachments.filter((file) => String(file.order_id) === String(req.params.orderId)) }));
+router.post('/quotation-extractions/orders/:orderId/attachments', (req, res) => {
+  const order = orders.find((entry) => String(entry.id) === String(req.params.orderId)); const body = req.body || {};
+  if (!order || !body.filename || !body.data_base64) return res.status(400).json({ error: 'Thiếu đơn hàng hoặc file báo giá.' });
+  const fileId = Date.now() + demoFiles.length; demoFiles.push({ id: fileId, mime: body.mime || 'application/octet-stream', data_base64: body.data_base64 });
+  const targets = body.item_ids?.length ? body.item_ids : [null]; targets.forEach((itemId) => quoteAttachments.push({ id: Date.now() + quoteAttachments.length, order_id: order.id, order_item_id: itemId, supplier_id: body.supplier_id || null, attachment_id: fileId, filename: body.filename, url: `/api/uploads/${fileId}`, source_supplier_name: body.source_supplier_name || '', supplier_name: suppliers.find((s) => String(s.id) === String(body.supplier_id))?.name || '', item_name: order.items.find((item) => String(item.id) === String(itemId))?.item_name || null }));
+  ok(res, { id: fileId, url: `/api/uploads/${fileId}`, linked_items: targets.length });
+});
+router.delete('/quotation-extractions/orders/:orderId/attachments/:linkId', (req, res) => { const index = quoteAttachments.findIndex((file) => String(file.id) === String(req.params.linkId) && String(file.order_id) === String(req.params.orderId)); if (index < 0) return res.status(404).json({ error: 'Không tìm thấy liên kết file.' }); quoteAttachments.splice(index, 1); ok(res); });
 
 router.use((req, res) => res.status(404).json({ error: `Demo route chưa hỗ trợ: ${req.method} ${req.path}` }));
 

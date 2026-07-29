@@ -1,100 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, fmtVND, fmtNum, fmtDate, getToken } from '../api.js';
+import { api, fmtDate, fmtNum, fmtVND, getToken } from '../api.js';
 import { useMeta } from '../meta.jsx';
 import { useAuth } from '../auth.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
 import BulkDeleteButton from '../components/BulkDeleteButton.jsx';
 
 export default function Orders() {
-  const { states, L } = useMeta();
-  const { user } = useAuth();
-  const canWrite = ['admin', 'purchasing'].includes(user.role);
-  const canPurge = ['admin', 'pm'].includes(user.role);
-  const [rows, setRows] = useState([]);
-  const [q, setQ] = useState('');
-  const [status, setStatus] = useState('');
-  const [dateField, setDateField] = useState('request_date');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [err, setErr] = useState('');
-  const nav = useNavigate();
-
-  const load = () => {
-    const p = new URLSearchParams({ q, status, date_field: dateField, limit: '100' });
-    if (dateFrom) p.set('date_from', dateFrom); if (dateTo) p.set('date_to', dateTo);
-    api.get(`/orders?${p}`).then((r) => setRows(r.data || [])).catch((e) => setErr(e.message));
-  };
-  useEffect(() => { load(); }, [q, status, dateField, dateFrom, dateTo]);
-  const clearFilters = () => { setQ(''); setStatus(''); setDateField('request_date'); setDateFrom(''); setDateTo(''); };
-  const hasDateFilter = dateFrom || dateTo;
-
-  const download = async (format) => {
-    const res = await fetch(`/api/orders/export?format=${format}`, { headers: { Authorization: `Bearer ${getToken()}` } });
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `procureos-orders.${format === 'csv' ? 'csv' : 'xlsx'}`; a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <>
-      <div className="topbar">
-        <h1>Đơn hàng</h1>
-        {canWrite && <button className="btn-primary" onClick={() => nav('/orders/new')}>+ Tạo đơn mới</button>}
-      </div>
-      <div className="content">
-        <div className="toolbar">
-          <input className="search" placeholder="Tìm mã đơn / dự án…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <select style={{ width: 180 }} value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">Tất cả trạng thái</option>
-            {states.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
-          </select>
-          <select style={{ width: 150 }} value={dateField} onChange={(e) => setDateField(e.target.value)}><option value="request_date">Ngày YC</option><option value="expected_date">Ngày nhận</option><option value="created_at">Ngày tạo</option></select>
-          <input type="date" aria-label="Từ ngày" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ width: 145 }} />
-          <input type="date" aria-label="Đến ngày" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ width: 145 }} />
-          {(q || status || hasDateFilter) && <button className="btn-sm" onClick={clearFilters}>Xóa lọc</button>}
-          <div className="spacer" />
-          <button onClick={() => download('xlsx')}>⬇ Excel</button>
-          <button onClick={() => download('csv')}>⬇ CSV</button>
-          {canWrite && <button className="btn-primary" onClick={() => nav('/orders/new')}>+ Tạo đơn</button>}
-          {canPurge && <BulkDeleteButton entity="đơn hàng" countPath="/orders/count" deletePath="/orders" onDone={(n) => { alert(`Đã xóa ${n} đơn hàng`); load(); }} />}
-        </div>
-        {hasDateFilter && <div className="muted" style={{ margin: '-8px 0 12px' }}>Đang lọc {dateField === 'request_date' ? 'Ngày YC' : dateField === 'expected_date' ? 'Ngày nhận' : 'Ngày tạo'}{dateFrom ? ` từ ${fmtDate(dateFrom)}` : ''}{dateTo ? ` đến ${fmtDate(dateTo)}` : ''}.</div>}
-        {err && <div className="error">{err}</div>}
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>{L('orders.col.ma_don', 'Mã đơn')}</th>
-                <th>{L('orders.col.du_an', 'Dự án')}</th>
-                <th>{L('orders.col.team', 'Team')}</th>
-                <th>{L('orders.col.ncc', 'NCC')}</th>
-                <th>{L('orders.col.ngay_yc', 'Ngày YC')}</th>
-                <th>{L('orders.col.so_dong', 'Số dòng')}</th>
-                <th>{L('orders.col.gia_tri', 'Giá trị')}</th>
-                <th>{L('orders.col.trang_thai', 'Trạng thái')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((o) => (
-                <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => nav(`/orders/${o.id}`)}>
-                  <td><strong>{o.order_code}</strong></td>
-                  <td className="truncate" title={o.project_name}>{o.project_name}</td>
-                  <td>{o.team_name || '-'}</td>
-                  <td className="truncate" title={o.supplier_name}>{o.supplier_name || '-'}</td>
-                  <td>{fmtDate(o.request_date)}</td>
-                  <td>{fmtNum(o.item_count)}</td>
-                  <td>{fmtVND(o.total_amount)}</td>
-                  <td><StatusBadge code={o.status} /></td>
-                </tr>
-              ))}
-              {!rows.length && <tr><td colSpan={8} className="center-msg">Không có đơn hàng</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
-  );
+  const { states } = useMeta(); const { user } = useAuth(); const nav = useNavigate();
+  const canWrite = ['admin', 'purchasing'].includes(user.role); const canPurge = ['admin', 'pm'].includes(user.role);
+  const [rows, setRows] = useState([]); const [teams, setTeams] = useState([]); const [suppliers, setSuppliers] = useState([]);
+  const [filters, setFilters] = useState({ q: '', status: '', team_id: '', supplier_id: '', date_from: '', date_to: '', date_field: 'request_date', quick: '' }); const [view, setView] = useState('list'); const [err, setErr] = useState('');
+  const set = (key, value) => setFilters((old) => ({ ...old, [key]: value }));
+  const load = () => { const p = new URLSearchParams({ q: filters.q, status: filters.status, team_id: filters.team_id, supplier_id: filters.supplier_id, date_field: filters.date_field, limit: '100' }); if (filters.date_from) p.set('date_from', filters.date_from); if (filters.date_to) p.set('date_to', filters.date_to); api.get(`/orders?${p}`).then((r) => setRows(r.data || [])).catch((e) => setErr(e.message)); };
+  useEffect(() => { load(); }, [filters.q, filters.status, filters.team_id, filters.supplier_id, filters.date_from, filters.date_to, filters.date_field]);
+  useEffect(() => { api.get('/teams?limit=200').then((r) => setTeams(r.data || [])); api.get('/suppliers?limit=500').then((r) => setSuppliers(r.data || [])); }, []);
+  const visible = useMemo(() => rows.filter((row) => filters.quick === 'needs_attention' ? ['new', 'in_progress', 'pending_confirmation'].includes(row.status) : filters.quick === 'has_warning' ? !row.supplier_name || !Number(row.item_count) : true), [rows, filters.quick]);
+  const clear = () => setFilters({ q: '', status: '', team_id: '', supplier_id: '', date_from: '', date_to: '', date_field: 'request_date', quick: '' });
+  const download = async (format) => { const res = await fetch(`/api/orders/export?format=${format}`, { headers: { Authorization: `Bearer ${getToken()}` } }); const url = URL.createObjectURL(await res.blob()); const a = document.createElement('a'); a.href = url; a.download = `procureos-orders.${format}`; a.click(); URL.revokeObjectURL(url); };
+  const renderRow = (o) => <tr key={o.id} onClick={() => nav(`/orders/${o.id}`)} style={{ cursor: 'pointer' }}><td><strong>{o.order_code}</strong></td><td className="truncate" title={o.project_name}>{o.project_name || '-'}</td><td>{o.team_name || '-'}</td><td className="truncate" title={o.supplier_name}>{o.supplier_name || '-'}</td><td>{fmtNum(o.item_count)}</td><td>{fmtDate(o.expected_date || o.request_date)}</td><td className="r">{fmtVND(o.total_amount)}</td><td><StatusBadge code={o.status} /></td><td><button className="btn-sm" onClick={(e) => { e.stopPropagation(); nav(`/orders/${o.id}`); }}>Mở</button></td></tr>;
+  return <><div className="topbar"><h1>Đơn hàng</h1>{canWrite && <button className="btn-primary" onClick={() => nav('/orders/new')}>+ Tạo đơn mới</button>}</div><div className="content">
+    <div className="toolbar" style={{ gap: 8 }}><input className="search" placeholder="Mã đơn, dự án, người yêu cầu…" value={filters.q} onChange={(e) => set('q', e.target.value)} /><select value={filters.status} onChange={(e) => set('status', e.target.value)}><option value="">Tất cả trạng thái</option>{states.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select><select value={filters.team_id} onChange={(e) => set('team_id', e.target.value)}><option value="">Tất cả team</option>{teams.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select><select value={filters.supplier_id} onChange={(e) => set('supplier_id', e.target.value)}><option value="">Tất cả NCC</option>{suppliers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select><select value={filters.date_field} onChange={(e) => set('date_field', e.target.value)}><option value="request_date">Ngày YC</option><option value="expected_date">Hạn nhận</option><option value="created_at">Ngày tạo</option></select><input type="date" value={filters.date_from} onChange={(e) => set('date_from', e.target.value)} /><input type="date" value={filters.date_to} onChange={(e) => set('date_to', e.target.value)} /><button className="btn-sm" onClick={clear}>Reset</button></div>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '0 0 12px' }}><button className={filters.quick === 'needs_attention' ? 'btn-primary btn-sm' : 'btn-sm'} onClick={() => set('quick', filters.quick === 'needs_attention' ? '' : 'needs_attention')}>Cần xử lý</button><button className={filters.quick === 'has_warning' ? 'btn-primary btn-sm' : 'btn-sm'} onClick={() => set('quick', filters.quick === 'has_warning' ? '' : 'has_warning')}>Có cảnh báo</button><span className="muted" style={{ alignSelf: 'center' }}>{visible.length} đơn</span><span className="spacer" /><select value={view} onChange={(e) => setView(e.target.value)}><option value="list">Danh sách</option><option value="status">Nhóm trạng thái</option></select><button className="btn-sm" onClick={() => download('xlsx')}>Excel</button><button className="btn-sm" onClick={() => download('csv')}>CSV</button>{canPurge && <BulkDeleteButton entity="đơn hàng" countPath="/orders/count" deletePath="/orders" onDone={load} />}</div>
+    {err && <div className="error">{err}</div>}
+    {view === 'status' ? <div>{states.map((state) => { const group = visible.filter((o) => o.status === state.code); return group.length ? <section className="card" key={state.code} style={{ marginBottom: 10, padding: 0 }}><div style={{ padding: '10px 12px' }}><strong>{state.name}</strong><span className="muted"> · {group.length} đơn</span></div><div className="table-wrap" style={{ border: 'none' }}><table><tbody>{group.map(renderRow)}</tbody></table></div></section> : null; })}</div> : <div className="table-wrap"><table><thead><tr><th>Mã đơn</th><th>Dự án</th><th>Team</th><th>NCC</th><th>Số dòng</th><th>Hạn nhận</th><th className="r">Giá trị</th><th>Trạng thái</th><th /></tr></thead><tbody>{visible.map(renderRow)}{!visible.length && <tr><td colSpan={9} className="center-msg">Không có đơn hàng phù hợp</td></tr>}</tbody></table></div>}
+  </div></>;
 }

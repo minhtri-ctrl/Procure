@@ -38,7 +38,7 @@ export default function ItemBoard() {
   const [savingId, setSavingId] = useState(null);
   const [openOrders, setOpenOrders] = useState(() => new Set());
   const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState('');
-  const [selected, setSelected] = useState(() => new Set()); const [bulkStatus, setBulkStatus] = useState(''); const [detail, setDetail] = useState(null);
+  const [selected, setSelected] = useState(() => new Set()); const [bulkStatus, setBulkStatus] = useState(''); const [detail, setDetail] = useState(null); const [groupBy, setGroupBy] = useState('order');
 
   const load = useCallback(() => {
     setLoading(true); setErr('');
@@ -82,12 +82,18 @@ export default function ItemBoard() {
     return [...map.values()];
   }, [rows]);
 
+  const displayGroups = useMemo(() => {
+    if (groupBy === 'order') return orders.map((order) => ({ ...order, key: `order-${order.order_id}` }));
+    const map = new Map();
+    rows.forEach((row) => { const id = groupBy === 'supplier' ? String(row.supplier_id || 'none') : String(row.line_status || 'cho_bao_gia'); const label = groupBy === 'supplier' ? `NCC: ${row.supplier_name || 'Chưa chọn NCC'}` : `Trạng thái: ${lineStatusOf(row.line_status).name}`; const group = map.get(id) || { key: `${groupBy}-${id}`, order_id: null, order_code: label, project_name: '', team_name: '', expected_date: '', total_amount: 0, flags: {}, items: [], suppliers: new Set() }; group.items.push(row); group.total_amount += Number(row.line_total || 0); if (row.supplier_name) group.suppliers.add(row.supplier_name); map.set(id, group); });
+    return [...map.values()];
+  }, [orders, rows, groupBy]);
   const toggleOrder = (id) => setOpenOrders((prev) => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
-  const expandAll = () => setOpenOrders(new Set(orders.map((o) => o.order_id)));
+  const expandAll = () => setOpenOrders(new Set(displayGroups.map((o) => o.key)));
   const collapseAll = () => setOpenOrders(new Set());
 
   return (
@@ -98,7 +104,7 @@ export default function ItemBoard() {
       </div>
       <div className="content">
         {err && <div className="error">{err}</div>}
-        <div className="card" style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap', padding: 10, marginBottom: 10 }}><div className="field" style={{ margin: 0 }}><label>Hạn nhận từ</label><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></div><div className="field" style={{ margin: 0 }}><label>đến</label><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></div><button className="btn-sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>Xóa lọc ngày</button></div>
+        <div className="card" style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap', padding: 10, marginBottom: 10 }}><div className="field" style={{ margin: 0 }}><label>Hạn nhận từ</label><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></div><div className="field" style={{ margin: 0 }}><label>đến</label><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></div><div className="field" style={{ margin: 0 }}><label>Nhóm hiển thị</label><select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}><option value="order">Theo đơn</option><option value="supplier">Theo NCC</option><option value="status">Theo trạng thái</option></select></div><button className="btn-sm" onClick={() => { setDateFrom(''); setDateTo(''); }}>Xóa lọc ngày</button></div>
 
         {/* Chip cờ cảnh báo nghiệp vụ */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -123,10 +129,10 @@ export default function ItemBoard() {
         {selected.size > 0 && <div className="card" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, padding: 10 }}><strong>Đã chọn {selected.size} dòng</strong><select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)}><option value="">Chọn trạng thái mới</option>{LINE_STATUSES.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}</select><button className="btn-primary" disabled={!bulkStatus} onClick={applyBulk}>Áp dụng hàng loạt</button><button className="btn-sm" onClick={() => setSelected(new Set())}>Bỏ chọn</button></div>}
 
         {loading && <div className="muted" style={{ padding: 24, textAlign: 'center' }}>Đang tải…</div>}
-        {!loading && !orders.length && <div className="muted" style={{ padding: 24, textAlign: 'center' }}>Không có mặt hàng nào.</div>}
+        {!loading && !displayGroups.length && <div className="muted" style={{ padding: 24, textAlign: 'center' }}>Không có mặt hàng nào.</div>}
 
-        {!loading && orders.map((o) => (
-          <OrderGroup key={o.order_id} order={o} open={openOrders.has(o.order_id)} onToggle={() => toggleOrder(o.order_id)}
+        {!loading && displayGroups.map((o) => (
+          <OrderGroup key={o.key} order={o} open={openOrders.has(o.key)} onToggle={() => toggleOrder(o.key)}
             savingId={savingId} onChangeStatus={changeStatus} selected={selected} onToggleSelected={toggleSelected} onDetail={setDetail} />
         ))}
       </div>
@@ -143,7 +149,7 @@ function OrderGroup({ order, open, onToggle, savingId, onChangeStatus, selected,
     <div className="card" style={{ padding: 0, marginBottom: 10 }}>
       <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', cursor: 'pointer', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, color: 'var(--muted)' }}>{open ? '▼' : '▶'}</span>
-        <Link to={`/orders/${order.order_id}`} onClick={(e) => e.stopPropagation()} style={{ fontWeight: 600 }}>{order.order_code}</Link>
+        {order.order_id ? <Link to={`/orders/${order.order_id}`} onClick={(e) => e.stopPropagation()} style={{ fontWeight: 600 }}>{order.order_code}</Link> : <strong>{order.order_code}</strong>}
         <span className="muted">{order.project_name || ''}</span>
         <span className="muted">· {order.team_name || '-'}</span>
         <span className="muted">· {[...order.suppliers].join(', ') || '-'}</span>
@@ -154,7 +160,7 @@ function OrderGroup({ order, open, onToggle, savingId, onChangeStatus, selected,
       {!!activeFlags.length && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '0 14px 10px' }}>
           {activeFlags.map((fl) => (
-            <span key={fl.code} className="badge" style={{ background: fl.color + '22', color: fl.color, border: `1px solid ${fl.color}55`, fontSize: 12 }}>{fl.label}</span>
+            <span key={fl.code} className="badge" title={fl.label} style={{ background: '#f8fafc', color: 'var(--text)', border: '1px solid var(--border)', fontSize: 12 }}>⚠ {fl.label}</span>
           ))}
         </div>
       )}
@@ -165,7 +171,7 @@ function OrderGroup({ order, open, onToggle, savingId, onChangeStatus, selected,
               <tr>
                 <th></th><th>{L('item_board.col.ten_hang', 'Tên hàng')}</th><th>{L('item_board.col.loai', 'Loại')}</th><th className="r">{L('item_board.col.sl', 'SL')}</th>
                 <th className="r">{L('item_board.col.don_gia', 'Đơn giá')}</th><th className="r">{L('item_board.col.tong', 'Tổng')}</th><th>{L('item_board.col.ncc', 'NCC')}</th>
-                <th style={{ minWidth: 160 }}>{L('item_board.col.trang_thai_xu_ly', 'Trạng thái xử lý')}</th>
+                <th>BG</th><th style={{ minWidth: 160 }}>{L('item_board.col.trang_thai_xu_ly', 'Trạng thái xử lý')}</th>
               </tr>
             </thead>
             <tbody>
@@ -180,6 +186,7 @@ function OrderGroup({ order, open, onToggle, savingId, onChangeStatus, selected,
                     <td className="r">{fmtVND(it.unit_price)}</td>
                     <td className="r"><strong>{fmtVND(it.line_total)}</strong></td>
                     <td>{it.supplier_name || '-'}</td>
+                    <td>{it.quote_file_url || it.quotation_url ? <a href={it.quote_file_url || it.quotation_url} target="_blank" rel="noreferrer" title={it.quote_file_count ? `${it.quote_file_count} file báo giá` : 'Mở báo giá'} onClick={(e) => e.stopPropagation()}>📎{it.quote_file_count > 1 ? ` ${it.quote_file_count}` : ''}</a> : <span className="muted">-</span>}</td>
                     <td>
                       <span className="badge" style={{ background: st.color + '22', color: st.color, border: `1px solid ${st.color}55`, marginRight: 6 }}>{st.name}</span>
                       <select
@@ -214,11 +221,11 @@ function Chip({ label, count, color, code, activeCode, onClick }) {
       style={{
         display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 20, cursor: 'pointer',
         border: `1px solid ${on ? color : 'var(--border)'}`,
-        background: on ? color : '#fff', color: on ? '#fff' : 'var(--text)', fontWeight: on ? 600 : 400,
+        background: on ? 'var(--primary)' : '#fff', color: on ? '#fff' : 'var(--text)', fontWeight: on ? 600 : 400,
       }}
     >
       <span>{label}</span>
-      <span style={{ background: on ? '#ffffff33' : color + '22', color: on ? '#fff' : color, borderRadius: 10, padding: '1px 8px', fontSize: 12, fontWeight: 600 }}>{fmtNum(count)}</span>
+      <span style={{ background: on ? '#ffffff33' : '#f1f5f9', color: on ? '#fff' : 'var(--muted)', borderRadius: 10, padding: '1px 8px', fontSize: 12, fontWeight: 600 }}>{fmtNum(count)}</span>
     </button>
   );
 }

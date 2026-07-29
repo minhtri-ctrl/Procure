@@ -50,9 +50,10 @@ Frontend `Dashboard.jsx` expects:
 - `PATCH /orders/items/:itemId/progress`
 - `POST /orders/items/:itemId/to-catalog`
 - `POST /orders/items/:itemId/handover`
+- `POST /orders/items/supplier-suggestions` (admin/purchasing; advisory ranking only, never updates a supplier)
 - `POST /orders/automation/run`
 
-`GET /orders/:id` returns header plus `items`, `order_suppliers`, `history`, and parsed `custom_fields`. The supplier endpoint stores commercial terms specific to an order: payment method/time, contract number, Vendor link, and extensible `custom_fields`.
+`GET /orders/:id` returns header plus `items`, `order_suppliers`, `history`, parsed `custom_fields`, and `quote_attachments` (filename, MIME type, upload time, linked item/supplier, URL). The supplier endpoint stores commercial terms specific to an order: payment method/time, contract number, Vendor link, and extensible `custom_fields`.
 
 ## Purchase Requests
 
@@ -142,8 +143,23 @@ List response usually uses `{ data, total, page, limit }`.
 
 `server/src/routes/demo.js` mimics enough API surface for UI preview without DB. Keep shapes aligned with frontend pages.
 
+## Quotation Extraction
+
+- `POST /quotation-extractions/extract` (admin/purchasing only)
+  - JSON body: `{ filename, data_base64 }`; maximum decoded size is 5 MB.
+  - Supported input: `.xlsx`, `.xls`, `.csv`, `.pdf`, `.png`, `.jpg`/`.jpeg`, `.webp`, each up to 5 MB. PDF and images require a valid OpenAI configuration because they are processed as multimodal AI input.
+  - Response contains `items` with `item_name`, `quantity`, `unit_price`, `vat_percent`, `supplier_name`, a `raw` source excerpt (plus parser sheet/row when applicable), `issues`, and `confidence`, plus `mode` (`ai`, `local-parser`, or `demo-parser`).
+  - The endpoint only extracts/reviews data: it never creates an order. In `DEMO_MODE`, it uses the internal parser unless both a valid OpenAI configuration and `DEMO_ALLOW_EXTERNAL_AI=1` are present.
+
+## Quotation batch and source attachments
+
+- `POST /quotation-extractions/extract-batch` accepts up to 3 independent files as `{ files: [{ client_id, filename, data_base64 }] }`. Each file returns its own status, fingerprint, rows, and supplier-match result; one failure does not discard other files.
+- `GET|POST /quotation-extractions/orders/:orderId/attachments` lists or creates quotation-source links. POST stores one blob and can link it to several item ids.
+- `DELETE /quotation-extractions/orders/:orderId/attachments/:linkId` deletes one relation and removes the blob only when no relation remains.
+
 ## Order-line workspace additions
 
 - `GET /orders/items/all` accepts `date_from`, `date_to`, `team_id`, `supplier_id`, `line_status`, `flag`, and returns line detail plus missing-data flags.
 - `PATCH /orders/items/progress/bulk` updates up to 200 selected line items for admin/purchasing and re-syncs affected order statuses.
 - `PUT /orders/:id/suppliers/:supplierId` accepts supplier-level `discount_type` (`percent` or `amount`) and `discount_value`; the API recalculates the supplier and order totals.
+- `GET /orders/items/all` also returns `quote_file_count` and `quote_file_url` for direct BG access in the item work queue.

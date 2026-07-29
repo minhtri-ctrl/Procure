@@ -416,6 +416,29 @@ CREATE TABLE IF NOT EXISTS attachments (
   KEY idx_attach_ref (kind, ref_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Liên kết một file báo giá với đơn, dòng hàng và NCC mà không nhân bản blob.
+CREATE TABLE IF NOT EXISTS order_quote_attachments (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  order_id BIGINT UNSIGNED NOT NULL,
+  order_item_id BIGINT UNSIGNED NULL,
+  supplier_id BIGINT UNSIGNED NULL,
+  attachment_id BIGINT UNSIGNED NOT NULL,
+  extraction_batch VARCHAR(100) NULL,
+  source_fingerprint CHAR(64) NULL,
+  source_supplier_name VARCHAR(255) NULL,
+  created_by VARCHAR(190) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_quote_attachment_order (order_id),
+  KEY idx_quote_attachment_item (order_item_id),
+  KEY idx_quote_attachment_supplier (supplier_id),
+  KEY idx_quote_attachment_file (attachment_id),
+  CONSTRAINT fk_quote_attachment_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  CONSTRAINT fk_quote_attachment_item FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE SET NULL,
+  CONSTRAINT fk_quote_attachment_supplier FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL,
+  CONSTRAINT fk_quote_attachment_file FOREIGN KEY (attachment_id) REFERENCES attachments(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------------------------------------------------------------------
 -- 16. WORKFLOW STATES  (tiến trình đơn hàng — admin cấu hình được)
 -- ---------------------------------------------------------------------

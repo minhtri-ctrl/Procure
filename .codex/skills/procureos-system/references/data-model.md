@@ -126,3 +126,13 @@ When adding columns:
 2. Add an idempotent `ALTER TABLE` entry to `MIGRATIONS` in `server/src/db.js`.
 3. Handle duplicate-column errors only as currently done.
 4. Do not make migrations destructive unless the user explicitly asks.
+
+## Quotation source attachments
+
+`order_quote_attachments` links one `attachments` blob to `order_id`, optional `order_item_id`, optional `supplier_id`, and extraction batch/fingerprint/source-supplier metadata. It avoids copying one quotation blob for every row, keeps legacy `order_items.quotation_url` working, and cascades safely with the order/attachment.
+
+Supplier suggestions are calculated on demand from suppliers and historical `order_items`; no prompt, AI secret, or recommendation cache is persisted. A recommendation never changes `order_items.supplier_id` without an explicit line update.
+
+## Quotation extraction persistence
+
+Quotation extraction is intentionally ephemeral in the current implementation: the selected source file remains in the browser only for the user to preview during review, and no file/history metadata is persisted before an order exists. Applying reviewed rows uses the existing `orders` and `order_items` creation path.
