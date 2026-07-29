@@ -92,9 +92,9 @@ Guard arrays before `.map()` when touching dashboards or demo routes.
 
 ## Order and item work queue
 
-`Orders.jsx` is table-first: compact filters (search, status, team, supplier, date), neutral quick filters, and a list/status-group view. `ItemBoard.jsx` keeps row-level bulk actions and can group the same work queue by order, supplier, or line status. It displays the BG link/count from the item API. Keep status color limited to status badges; warnings should be neutral icon/text with tooltips.
+`Orders.jsx` is table-first: search and status are always visible while team/supplier/date filters live under a compact “Bộ lọc” disclosure. It offers list, status-group, and read-only Kanban views without changing workflow. `ItemBoard.jsx` keeps row-level bulk actions and can group the same work queue by order, supplier, or line status. It displays the BG link/count from the item API. Keep status color limited to status badges; warnings should be neutral icon/text with tooltips.
 
-`OrderDetail.jsx` renders linked quotation files in the BG cell. It first uses item links, then supplier-level quote links, and falls back to legacy `quotation_url`; a count opens a small file chooser. The attachment list remains as an audit/manage fallback, not the primary retrieval path.
+`OrderDetail.jsx` renders linked quotation files in the BG cell. It first uses item links, then supplier-level quote links, and falls back to legacy `quotation_url`; a count opens a small file chooser. The large attachment audit table is hidden from the default UI; only truly order-level files have a compact section. Rows do not open the edit modal on click—use the explicit Sửa action.
 
 ## Build Notes
 

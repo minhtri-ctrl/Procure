@@ -101,6 +101,7 @@ Checklist:
 1. Preserve individual line mutations and the existing bulk-progress confirmation.
 2. Return BG metadata in both MySQL and demo item-list responses; retain `quotation_url` fallback.
 3. Keep recommendations server-side and advisory. Test that applying one uses the normal line-update route and that no recommendation changes a supplier automatically.
+4. For Orders UI, keep table default and make advanced filters collapsible; Kanban is read-only unless workflow rules are deliberately extended. Do not attach row-click editing to dense tables.
 
 ## Validate
 

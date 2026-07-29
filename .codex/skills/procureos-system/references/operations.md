@@ -143,3 +143,4 @@ API health works but UI uses old bundle:
 - Do not commit `admin/spa.html`.
 - Server listens on `PORT`, default `8080`.
 - Root `package.json` must remain present for Node detection.
+- Before a major UI change, create a named Git snapshot commit/branch. Deploy only after syntax/build/API smoke passes; the demo production flow deploys from the configured GitHub repository and must not be guessed if access/configuration is absent.

@@ -200,7 +200,7 @@ export default function OrderDetail() {
               </tr></thead>
               <tbody>
                 {o.items.map((it) => (
-                  <tr key={it.id} onClick={() => setEditing(it)} style={{ cursor: canWrite ? 'pointer' : 'default' }}>
+                  <tr key={it.id} style={{ cursor: 'default' }}>
                     <td>{it.item_code || <span className="muted">chưa có</span>}</td>
                     <td>{it.loai_hh || '-'}</td>
                     <td>{it.item_name}</td>
@@ -234,7 +234,7 @@ export default function OrderDetail() {
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 16 }}><h3 style={{ marginTop: 0 }}>File báo giá đính kèm</h3>{(o.quote_attachments || []).length ? <div className="table-wrap"><table><thead><tr><th>File</th><th>NCC</th><th>Dòng hàng</th><th>NCC nguồn</th>{canWrite && <th />}</tr></thead><tbody>{o.quote_attachments.map((file) => <tr key={file.id}><td><a href={file.url} target="_blank" rel="noreferrer">{file.filename}</a></td><td>{file.supplier_name || '-'}</td><td>{file.item_name || 'Theo đơn hàng'}</td><td>{file.source_supplier_name || '-'}</td>{canWrite && <td><button className="btn-sm btn-danger" onClick={async () => { if (confirm('Xóa liên kết file báo giá này?')) { await api.del(`/quotation-extractions/orders/${id}/attachments/${file.id}`); load(); } }}>Xóa</button></td>}</tr>)}</tbody></table></div> : <div className="muted">Chưa có file báo giá AI được liên kết.</div>}</div>
+      {(() => { const general = (o.quote_attachments || []).filter((file) => !file.order_item_id && !file.supplier_id); return general.length ? <div className="card" style={{ marginTop: 16 }}><h3 style={{ marginTop: 0 }}>Báo giá cấp đơn</h3>{general.map((file) => <div key={file.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}><a href={file.url} target="_blank" rel="noreferrer">📎 {file.filename}</a>{canWrite && <button className="btn-sm btn-danger" onClick={async () => { if (confirm('Xóa liên kết file báo giá này?')) { await api.del(`/quotation-extractions/orders/${id}/attachments/${file.id}`); load(); } }}>Xóa</button>}</div>)}</div> : null; })()}
       {editing && <LineEdit item={editing} orderId={o.id} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
       {supplierEdit && <OrderSupplierEdit orderId={o.id} supplier={supplierEdit} onClose={() => setSupplierEdit(null)} onSaved={() => { setSupplierEdit(null); load(); }} />}
       {editHdr && <EditOrder order={o} teams={teams} onClose={() => setEditHdr(false)} onSaved={() => { setEditHdr(false); load(); }} />}
