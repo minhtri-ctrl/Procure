@@ -153,6 +153,7 @@ API health works but UI uses old bundle:
 - Deploy runner can misclassify project as static HTML if `.html` remains in workspace.
 - Do not commit `admin/spa.html`.
 - Both GitHub Import and ZIP Upload in Demo System replace the project workspace. Never upload a ZIP containing only `.env`: it removes `package.json` and the application source, so it cannot deploy.
+- Before packaging a project with a managed/production database, require `DEMO_MODE=0` (or omit it). `DEMO_MODE=1` mounts in-memory demo routes and makes live MySQL data appear to disappear; it does not delete that data. `scripts/pack-deployment.ps1` now rejects this setting unless `-AllowDemoMode` is passed for a disposable demo project.
 - For a private server configuration, copy `deployment-ai.env.template` to a local `.env`, enter the key only on the local machine, then package **the full source tree plus `.env` at the ZIP root**. Run `powershell -ExecutionPolicy Bypass -File scripts\pack-deployment.ps1` to create `procureos-deployment.zip`; upload that one full ZIP and press Deploy. Do not GitHub-import again afterward, because the import replaces the `.env` in the workspace.
 - Never add a real key to `.env.example`, Git, a GitHub import, or a screenshot. The ZIP is a private deployment artifact and must not be committed or shared.
 - Server listens on `PORT`, default `8080`.

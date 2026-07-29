@@ -131,7 +131,7 @@ Invoke-RestMethod http://localhost:8080/api/health
 
 ## Package Demo System deployment with server AI configuration
 
-1. Copy `deployment-ai.env.template` to `.env` locally and set `AI_PROVIDER=openai`, `AI_API_KEY`, and the selected models. Do not commit this file.
+1. Copy `deployment-ai.env.template` to `.env` locally, set `DEMO_MODE=0` for any project with live/managed MySQL data, then set `AI_PROVIDER=openai`, `AI_API_KEY`, and the selected models. Do not commit this file. `DEMO_MODE=1` is only for disposable fixture projects.
 2. From the repository root, run:
 
 ```powershell

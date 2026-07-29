@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
   [string]$EnvFile = '.env',
-  [string]$OutputPath = 'procureos-deployment.zip'
+  [string]$OutputPath = 'procureos-deployment.zip',
+  [switch]$AllowDemoMode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +13,14 @@ $outputFullPath = if ([System.IO.Path]::IsPathRooted($OutputPath)) { $OutputPath
 
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
   throw "Không tìm thấy file cấu hình: $envPath. Hãy sao chép deployment-ai.env.template thành .env và điền key trên máy của bạn."
+}
+
+# A deployment ZIP replaces the Demo System workspace. Accidentally including
+# DEMO_MODE=1 makes the app deliberately serve in-memory fixtures and hides
+# the managed MySQL data. Require an explicit override for a disposable demo.
+$demoSetting = Get-Content -LiteralPath $envPath | Where-Object { $_ -match '^\s*DEMO_MODE\s*=\s*1\s*(#.*)?$' } | Select-Object -First 1
+if ($demoSetting -and -not $AllowDemoMode) {
+  throw "DEMO_MODE=1 would hide production MySQL data after deployment. Set DEMO_MODE=0, or pass -AllowDemoMode only for a disposable demo project."
 }
 
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("procureos-deployment-" + [Guid]::NewGuid().ToString('N'))
