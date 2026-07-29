@@ -129,6 +129,18 @@ Smoke:
 Invoke-RestMethod http://localhost:8080/api/health
 ```
 
+## Package Demo System deployment with server AI configuration
+
+1. Copy `deployment-ai.env.template` to `.env` locally and set `AI_PROVIDER=openai`, `AI_API_KEY`, and the selected models. Do not commit this file.
+2. From the repository root, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\pack-deployment.ps1
+```
+
+3. Upload only the generated `procureos-deployment.zip`. The ZIP contains the full deployable source and local `.env` at its root; a configuration-only ZIP replaces the Demo System workspace and breaks Node detection.
+4. Deploy, then test PDF/image/Word quotation extraction. Never upload a quote file to external AI unless the administrator has opted in and the server key is present.
+
 ## Change quotation extraction
 
 1. Keep `/quotation-extractions/extract` server-side and role-protected; do not put an AI key or provider call in React.
