@@ -143,6 +143,8 @@ List response usually uses `{ data, total, page, limit }`.
 
 `server/src/routes/demo.js` mimics enough API surface for UI preview without DB. Keep shapes aligned with frontend pages.
 
+In `DEMO_MODE`, `/ai/status` and `/ai/chat` use the configured OpenAI server-side API only when `AI_PROVIDER=openai`, `AI_API_KEY` is present, and `DEMO_ALLOW_EXTERNAL_AI=1`. Otherwise they return an explicitly labelled demo intent-router fallback; no key is returned to the browser.
+
 ## Quotation Extraction
 
 - `POST /quotation-extractions/extract` (admin/purchasing only)

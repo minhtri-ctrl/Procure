@@ -358,8 +358,31 @@ router.post('/uploads/:kind/:id', (req, res) => ok(res, { id: Date.now(), url: '
 router.delete('/uploads/:kind/:id', (req, res) => ok(res));
 router.post('/import', (req, res) => ok(res, { ok: true, teams: 2, suppliers: 2, products: 2, orders: 2 }));
 router.post('/suppliers/import', (req, res) => ok(res, { ok: true, imported: 2, updated: 0, skipped: 0 }));
-router.get('/ai/status', (req, res) => ok(res, { provider: 'demo', model: 'intent-router-demo', enabled: false }));
-router.post('/ai/chat', (req, res) => ok(res, { answer: 'Demo AI: hệ thống có 2 đơn hàng, 2 nhà cung cấp, 2 SKU và automation đang bật ở chế độ xem thử.' }));
+function canUseDemoAi() { return config.ai.provider === 'openai' && !!config.ai.apiKey && config.ai.allowDemoExternal; }
+async function demoAiChat(message, history = []) {
+  const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const context = {
+      mode: 'ProcureOS DEMO_MODE',
+      orders: orders.map((order) => ({ order_code: order.order_code, project_name: order.project_name, status: order.status, total_amount: order.total_amount, supplier_name: order.supplier_name, items: (order.items || []).map((item) => ({ item_name: item.item_name, quantity: item.quantity, unit_price: item.unit_price })) })),
+      suppliers: suppliers.map((supplier) => ({ name: supplier.name, is_active: supplier.is_active, master_contract: supplier.master_contract })),
+    };
+    const response = await fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', signal: controller.signal, headers: { Authorization: `Bearer ${config.ai.apiKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: config.ai.model, messages: [{ role: 'system', content: 'Bạn là trợ lý ProcureOS. Trả lời ngắn gọn bằng tiếng Việt, chỉ dựa trên dữ liệu demo được cấp. Chỉ tư vấn/tra cứu; không tự tạo, sửa hoặc xóa đơn hàng/NCC. Nếu dữ liệu thiếu, nói rõ.' }, ...history, { role: 'user', content: `${message}\n\nDữ liệu demo an toàn:\n${JSON.stringify(context)}` }], max_tokens: 900 }) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || 'AI provider không phản hồi');
+    return String(data.choices?.[0]?.message?.content || '').trim() || 'AI chưa trả về nội dung.';
+  } finally { clearTimeout(timeout); }
+}
+router.get('/ai/status', (req, res) => ok(res, { provider: canUseDemoAi() ? config.ai.provider : 'demo', model: canUseDemoAi() ? config.ai.model : 'intent-router-demo', enabled: canUseDemoAi(), demo_mode: true }));
+router.post('/ai/chat', async (req, res) => {
+  const message = String(req.body?.message || '').trim();
+  if (!message) return res.status(400).json({ error: 'Thiếu nội dung' });
+  if (message.length > 4000) return res.status(400).json({ error: 'Nội dung vượt giới hạn 4.000 ký tự.' });
+  const history = Array.isArray(req.body?.history) ? req.body.history.slice(-8).map((entry) => ({ role: entry?.role === 'assistant' ? 'assistant' : 'user', content: String(entry?.content || '').slice(0, 2000) })) : [];
+  if (!canUseDemoAi()) return ok(res, { reply: 'Demo AI: hệ thống có 2 đơn hàng, 2 nhà cung cấp, 2 SKU và automation đang bật ở chế độ xem thử.', mode: 'demo-intent-router', warning: 'AI thật chưa được bật cho DEMO_MODE.' });
+  try { return ok(res, { reply: await demoAiChat(message, history), mode: 'openai-demo' }); }
+  catch (error) { return ok(res, { reply: 'AI demo hiện chưa phản hồi. Vui lòng thử lại sau.', mode: 'demo-intent-router', warning: error.message }); }
+});
 function demoMatch(name) { const key = String(name || '').trim().toLowerCase().replace(/\s+/g, ' '); const matches = suppliers.filter((s) => s.name.trim().toLowerCase().replace(/\s+/g, ' ') === key); return matches.length === 1 ? { status: 'matched', supplier_id: matches[0].id, supplier_name: matches[0].name } : { status: key ? 'new' : 'missing', supplier_id: null }; }
 function demoExtract(file) { return extractQuotation({ filename: file.filename, dataBase64: file.data_base64 }).then((result) => ({ client_id: file.client_id || '', filename: file.filename, fingerprint: `${file.filename}:${String(file.data_base64).length}`, status: 'success', ...result, items: (result.items || []).map((item) => ({ ...item, supplier_match: demoMatch(item.supplier_name) })) })).catch((error) => ({ client_id: file.client_id || '', filename: file.filename, status: 'error', error: error.message })); }
 router.post('/quotation-extractions/extract-batch', (req, res, next) => {
