@@ -356,7 +356,10 @@ router.delete('/users/:id', (req, res) => ok(res));
 router.get('/uploads/:id', (req, res) => { const file = demoFiles.find((entry) => String(entry.id) === String(req.params.id)); if (!file) return res.status(404).send('Không tìm thấy file demo'); res.type(file.mime || 'application/octet-stream').send(Buffer.from(file.data_base64, 'base64')); });
 router.post('/uploads/:kind/:id', (req, res) => ok(res, { id: Date.now(), url: '/api/uploads/demo' }));
 router.delete('/uploads/:kind/:id', (req, res) => ok(res));
-router.post('/import', (req, res) => ok(res, { ok: true, teams: 2, suppliers: 2, products: 2, orders: 2 }));
+router.post('/import/preview', (req, res) => ok(res, { batch_id: 1, headers: ['MA_DH', 'TEN_HANG', 'SO_LUONG', 'DON_GIA'], sheets: ['DATA', 'NCC', 'DM_SP'], summary: { total_rows: 2, valid_rows: 2, error_rows: 0, warning_rows: 0, orders: 1, existing_orders: 0, suppliers: 1, categories: 1 }, rows: [{ source_row: 3, order_code: 'RQ-DEMO-0001', item_name: 'Hàng demo', quantity: 1, unit_price: 100000, vat_rate: 0.08, supplier_name: 'NCC Demo', loai_hh: 'Vật phẩm', issues: [] }] }));
+router.get('/import/batches', (req, res) => ok(res, { data: [] }));
+router.post('/import/batches/:id/commit', (req, res) => ok(res, { ok: true, summary: { created_orders: 1, created_items: 1, skipped_orders: 0 } }));
+router.post('/import/batches/:id/rollback', (req, res) => ok(res, { ok: true, rolled_back_orders: 1 }));
 router.post('/suppliers/import', (req, res) => ok(res, { ok: true, imported: 2, updated: 0, skipped: 0 }));
 function canUseDemoAi() { return config.ai.provider === 'openai' && !!config.ai.apiKey && config.ai.allowDemoExternal; }
 async function demoAiChat(message, history = []) {

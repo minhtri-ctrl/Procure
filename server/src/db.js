@@ -84,6 +84,15 @@ async function ensureAdmin() {
 
 // Migration idempotent: thêm cột cho DB đã deploy (bỏ qua nếu cột đã tồn tại).
 const MIGRATIONS = [
+  "ALTER TABLE orders ADD COLUMN import_batch_id BIGINT UNSIGNED NULL",
+  "ALTER TABLE orders ADD KEY idx_orders_import_batch (import_batch_id)",
+  `CREATE TABLE IF NOT EXISTS import_batches (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, checksum CHAR(64) NOT NULL, filename VARCHAR(255) NOT NULL,
+    mapping_json LONGTEXT NULL, preview_json LONGTEXT NULL, summary_json LONGTEXT NULL, status VARCHAR(32) NOT NULL DEFAULT 'previewed',
+    created_by VARCHAR(190) NULL, committed_by VARCHAR(190) NULL, rolled_back_by VARCHAR(190) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, committed_at DATETIME NULL, rolled_back_at DATETIME NULL,
+    PRIMARY KEY (id), KEY idx_import_batches_checksum (checksum), KEY idx_import_batches_status (status)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   "ALTER TABLE orders ADD COLUMN po_no VARCHAR(100) NULL",
   "ALTER TABLE orders ADD COLUMN po_date DATETIME NULL",
   "ALTER TABLE orders ADD COLUMN po_status VARCHAR(64) NULL",

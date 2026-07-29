@@ -1,158 +1,129 @@
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import XLSX from 'xlsx';
 import { query, pool } from '../db.js';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap } from '../util.js';
 import { noAccent } from '../lib/codes.js';
 
+// Import is deliberately a two-phase operation.  Preview never writes data;
+// commit accepts only the reviewed batch and is recorded for audit/rollback.
 const router = Router();
 router.use(authRequired, requireRole('admin'));
 
-const s = (v) => (v === undefined || v === null ? '' : String(v).trim());
-const n = (v) => { const x = Number(String(v).replace(/[^0-9.-]/g, '')); return isNaN(x) ? 0 : x; };
-
-// Chuyển ngày (Date/serial/chuỗi) -> YYYY-MM-DD hoặc null.
-function toDate(v) {
+const text = (v) => (v === undefined || v === null ? '' : String(v)).normalize('NFC').trim().replace(/\s+/g, ' ');
+const key = (v) => noAccent(text(v)).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+const code = (v) => text(v).toUpperCase();
+const email = (v) => text(v).toLowerCase();
+const url = (v) => { const x = text(v); if (!x) return ''; try { const p = new URL(x); return ['http:', 'https:'].includes(p.protocol) ? x : ''; } catch { return ''; } };
+function number(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const raw = text(v).replace(/\s/g, ''); if (!raw) return null;
+  const normalized = raw.includes(',') && raw.includes('.') ? raw.replace(/\./g, '').replace(',', '.') : raw.replace(',', '.');
+  const parsed = Number(normalized.replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function date(v) {
   if (!v) return null;
-  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
-  if (typeof v === 'number') { const d = XLSX.SSF.parse_date_code(v); if (d) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`; }
-  const str = String(v).trim();
-  let m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(str);
-  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-  m = /^(\d{4})-(\d{2})-(\d{2})/.exec(str);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  return null;
+  if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  if (typeof v === 'number') { const d = XLSX.SSF.parse_date_code(v); if (d && d.y >= 1900 && d.y <= 2200) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`; }
+  const x = text(v); let m = /^(\d{4})[-/]?(\d{2})[-/]?(\d{2})/.exec(x);
+  if (!m) { m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(x); if (m) m = [m[0], m[3], m[2], m[1]]; }
+  if (!m) return null; const out = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  return Number.isNaN(new Date(`${out}T00:00:00Z`).getTime()) ? null : out;
+}
+function status(raw) {
+  const x = noAccent(raw).toLowerCase();
+  if (/huy|cancel/.test(x)) return 'cancelled'; if (/hoan thanh|hoan tat/.test(x)) return 'completed';
+  if (/thanh toan/.test(x)) return 'paid'; if (/nhap kho/.test(x)) return 'warehoused';
+  if (/nhan hang|da nhan/.test(x)) return 'received'; if (/dat hang/.test(x)) return 'ordered';
+  if (/bao gia/.test(x)) return 'quoted'; if (/dang|lam mau/.test(x)) return 'in_progress'; return 'new';
+}
+function readSheet(sheet, headerRow = 0) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+  const headers = (rows[headerRow] || []).map(key); const seen = new Set();
+  const records = rows.slice(headerRow + 1).map((row, index) => {
+    const value = {}; headers.forEach((h, col) => { if (h) value[h] = row[col]; });
+    return { row: index + headerRow + 2, value };
+  }).filter(({ value }) => Object.values(value).some((v) => text(v)));
+  return { headers, duplicateHeaders: headers.filter((h) => h && (seen.has(h) || !seen.add(h))), records };
+}
+function issue(row, field, severity, message) { row.issues.push({ field, severity, message }); }
+function computedLine(row) {
+  const q = number(row.quantity), price = number(row.unit_price), vat = number(row.vat_rate) ?? 0, discount = number(row.discount_rate) ?? 0;
+  if (q === null || price === null) return null;
+  const subtotal = Math.round(q * price * (1 - discount)); const tax = Math.round(subtotal * vat);
+  return { thanh_tien: subtotal, tien_thue: tax, line_total: subtotal + tax };
+}
+function parseData(data) {
+  const groups = new Map(); const rows = [];
+  for (const { row: rowNumber, value: r } of data.records) {
+    if (text(r.DA_XOA)) continue;
+    const item = { source_row: rowNumber, order_code: code(r.MA_DH), item_name: text(r.TEN_HANG), quantity: number(r.SO_LUONG), unit_price: number(r.DON_GIA), vat_rate: number(r.VAT) ?? 0, discount_rate: number(r.CHIET_KHAU) ?? 0, issues: [] };
+    if (!item.order_code) issue(item, 'MA_DH', 'error', 'Thiếu mã đơn hàng.');
+    if (!item.item_name) issue(item, 'TEN_HANG', 'error', 'Thiếu tên hàng.');
+    if (!(item.quantity > 0)) issue(item, 'SO_LUONG', 'error', 'Số lượng phải lớn hơn 0.');
+    if (!(item.unit_price >= 0)) issue(item, 'DON_GIA', 'error', 'Đơn giá phải là số không âm.');
+    if (item.vat_rate < 0 || item.vat_rate > 1) issue(item, 'VAT', 'error', 'VAT phải nằm trong khoảng 0–100%.');
+    item.request_date = date(r.NGAY_YC); item.expected_date = date(r.NGAY_NHAN); item.actual_date = date(r.NGAY_THUC_NHAN); item.handover_date = date(r.NGAY_BAN_GIAO);
+    for (const f of ['NGAY_YC', 'NGAY_NHAN', 'NGAY_THUC_NHAN', 'NGAY_BAN_GIAO']) if (text(r[f]) && !date(r[f])) issue(item, f, 'error', 'Ngày không hợp lệ.');
+    if (item.request_date && item.expected_date && item.expected_date < item.request_date) issue(item, 'NGAY_NHAN', 'warning', 'Ngày nhận dự kiến trước ngày yêu cầu.');
+    item.quotation_url = url(r.FILE_BG); item.design_link = url(r.THIET_KE) || url(r.LINK_THIET_KE); item.image_url = url(r.IMAGE_URL);
+    for (const f of ['FILE_BG', 'THIET_KE', 'LINK_THIET_KE', 'IMAGE_URL']) if (text(r[f]) && !(url(r[f]))) issue(item, f, 'warning', 'URL không hợp lệ; sẽ không được lưu.');
+    Object.assign(item, { requester_email: email(r.EMAIL), requester_name: text(r.TEN) || text(r.TEN_NGUOI_YEU_CAU), team_code: code(r.TEAM), project_name: text(r.TEN_DU_AN), pm: text(r.PM), hang_muc: text(r.HANG_MUC), status_raw: text(r.TIEN_TRINH), status: status(r.TIEN_TRINH), supplier_name: text(r.NCC), supplier_tax_code: text(r.MA_SO_THUE), loai_hh: text(r.LOAI_HH), item_code: code(r.MA_HANG), description: text(r.MO_TA_NGAN), unit: text(r.DVT), master_contract: text(r.MASTER_CONTRACT), pr_no: text(r.SO_PR), payment_method: text(r.HINH_THUC_TT), payment_term: text(r.THOI_HAN_TT), receiving_point: text(r.DIEM_NHAN), contract_no: text(r.SO_HOP_DONG), vendor_link: url(r.LINK_VENDOR), qdnb_link: url(r.QDNB_TBKM), warehouse_status: text(r.NHAP_KHO), note: text(r.GHI_CHU), progress: text(r.TIEN_TRINH) });
+    const calc = computedLine(item); if (calc) { const supplied = number(r.TONG_TIEN); if (supplied !== null && Math.abs(supplied - calc.line_total) > 1) issue(item, 'TONG_TIEN', 'warning', 'Tổng tiền chênh lệch; hệ thống sẽ tính lại.'); Object.assign(item, calc); }
+    rows.push(item); if (item.order_code) { if (!groups.has(item.order_code)) groups.set(item.order_code, []); groups.get(item.order_code).push(item); }
+  }
+  return { rows, groups };
 }
 
-// Map tiến trình tiếng Việt -> code workflow.
-function mapStatus(v) {
-  const t = noAccent(v).toLowerCase();
-  if (/cancel|huy/.test(t)) return 'cancelled';
-  if (/hoan (thanh|tat)/.test(t)) return 'completed';
-  if (/thanh toan/.test(t)) return 'paid';
-  if (/ban giao/.test(t)) return 'documented';
-  if (/nhan hang/.test(t)) return 'received';
-  if (/dat hang/.test(t)) return 'ordered';
-  if (/bao gia/.test(t)) return 'quoted';
-  if (/lam mau|dang xu/.test(t)) return 'in_progress';
-  if (/cho xu/.test(t)) return 'new';
-  return 'new';
-}
+router.post('/preview', wrap(async (req, res) => {
+  const { fileBase64, filename = 'import.xlsx', mapping = {} } = req.body || {};
+  if (!fileBase64) return res.status(400).json({ error: 'Thiếu file Excel.' });
+  const buffer = Buffer.from(fileBase64, 'base64'); if (buffer.length > 12 * 1024 * 1024) return res.status(413).json({ error: 'File vượt giới hạn 12 MB.' });
+  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true, raw: true });
+  if (!wb.Sheets.DATA) return res.status(400).json({ error: 'Không tìm thấy sheet DATA.' });
+  const data = readSheet(wb.Sheets.DATA, 1); const parsed = parseData(data);
+  const duplicateCodes = [...parsed.groups.entries()].filter(([, lines]) => new Set(lines.map((x) => `${x.item_code}|${x.item_name}|${x.quantity}|${x.unit_price}`)).size !== lines.length).map(([order_code]) => order_code);
+  for (const orderCode of duplicateCodes) for (const row of parsed.groups.get(orderCode)) issue(row, 'MA_DH', 'warning', 'Có dòng hàng trùng trong cùng file.');
+  const existing = parsed.groups.size ? await query(`SELECT order_code FROM orders WHERE deleted_at IS NULL AND order_code IN (${[...parsed.groups.keys()].map(() => '?').join(',')})`, [...parsed.groups.keys()]) : [];
+  const existingCodes = new Set(existing.map((x) => x.order_code)); for (const row of parsed.rows) if (existingCodes.has(row.order_code)) issue(row, 'MA_DH', 'warning', 'Mã đơn đã tồn tại; mặc định sẽ bỏ qua khi commit.');
+  const categorySheet = wb.Sheets.DM_SP ? readSheet(wb.Sheets.DM_SP, 0) : null; const supplierSheet = wb.Sheets.NCC ? readSheet(wb.Sheets.NCC, 0) : null;
+  const errors = parsed.rows.filter((r) => r.issues.some((x) => x.severity === 'error')).length; const warnings = parsed.rows.filter((r) => r.issues.some((x) => x.severity === 'warning')).length;
+  const checksum = crypto.createHash('sha256').update(buffer).digest('hex');
+  const payload = { version: 1, filename: text(filename), checksum, mapping, data_headers: data.headers, source: { data: parsed.rows, categories: categorySheet?.records.map((x) => x.value) || [], suppliers: supplierSheet?.records.map((x) => x.value) || [] } };
+  const result = await query('INSERT INTO import_batches (checksum, filename, mapping_json, preview_json, status, created_by) VALUES (?,?,?,?,?,?)', [checksum, text(filename), JSON.stringify(mapping), JSON.stringify(payload), 'previewed', req.user.email]);
+  res.status(201).json({ batch_id: result.insertId, checksum, headers: data.headers, summary: { total_rows: parsed.rows.length, valid_rows: parsed.rows.length - errors, error_rows: errors, warning_rows: warnings, orders: parsed.groups.size, existing_orders: existingCodes.size, suppliers: new Set(parsed.rows.map((x) => key(x.supplier_name)).filter(Boolean)).size, categories: new Set(parsed.rows.map((x) => key(x.loai_hh)).filter(Boolean)).size }, rows: parsed.rows.slice(0, 250), pagination: { page: 1, limit: 250, total: parsed.rows.length }, sheets: wb.SheetNames });
+}));
 
-router.post('/', wrap(async (req, res) => {
-  const b64 = req.body?.fileBase64;
-  if (!b64) return res.status(400).json({ error: 'Thiếu fileBase64' });
-  const wb = XLSX.read(Buffer.from(b64, 'base64'), { type: 'buffer', cellDates: true });
-  const result = {};
+router.get('/batches', wrap(async (req, res) => res.json({ data: await query('SELECT id, filename, checksum, status, created_by, created_at, committed_at, rolled_back_at, summary_json FROM import_batches ORDER BY id DESC LIMIT 50') })));
+router.get('/batches/:id', wrap(async (req, res) => { const [batch] = await query('SELECT * FROM import_batches WHERE id=?', [req.params.id]); if (!batch) return res.status(404).json({ error: 'Không tìm thấy batch.' }); const preview = JSON.parse(batch.preview_json || '{}'); res.json({ batch: { ...batch, preview_json: undefined }, rows: (preview.source?.data || []).slice(0, 250), total_rows: preview.source?.data?.length || 0 }); }));
 
-  // ---- 1. DM_SP -> categories (từ điển loại hàng) ----
-  if (wb.Sheets['DM_SP']) {
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets['DM_SP'], { defval: '' });
-    let c = 0;
-    for (const r of rows) {
-      const aliases = s(r.LOAI_HH); const abbr = s(r.ABBR2); const name = s(r.MO_TA) || aliases.split(';')[0];
-      if (!name) continue;
-      const code = (noAccent(name).toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 40)) || abbr || ('C' + c);
-      await query(
-        'INSERT INTO categories (code, name, abbr, aliases) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name), abbr=VALUES(abbr), aliases=VALUES(aliases)',
-        [code, name, abbr, aliases]
-      );
-      c++;
+router.post('/batches/:id/commit', wrap(async (req, res) => {
+  const [batch] = await query('SELECT * FROM import_batches WHERE id=? FOR UPDATE', [req.params.id]); if (!batch) return res.status(404).json({ error: 'Không tìm thấy batch.' }); if (batch.status === 'committed') return res.json({ ok: true, idempotent: true, summary: JSON.parse(batch.summary_json || '{}') }); if (batch.status === 'rolled_back') return res.status(409).json({ error: 'Batch đã rollback.' });
+  const preview = JSON.parse(batch.preview_json || '{}'); const rows = preview.source?.data || []; if (!rows.length) return res.status(400).json({ error: 'Batch không có dữ liệu để nhập.' });
+  const blockers = rows.filter((r) => r.issues?.some((x) => x.severity === 'error')); if (blockers.length) return res.status(422).json({ error: `Còn ${blockers.length} dòng lỗi cần xử lý trước khi nhập.` });
+  const conn = await pool.getConnection(); const summary = { created_orders: 0, skipped_orders: 0, created_items: 0, created_suppliers: 0, created_categories: 0, warning_rows: rows.filter((r) => r.issues?.some((x) => x.severity === 'warning')).length };
+  try {
+    await conn.beginTransaction(); const orderGroups = new Map(); for (const row of rows) { if (!orderGroups.has(row.order_code)) orderGroups.set(row.order_code, []); orderGroups.get(row.order_code).push(row); }
+    const [statuses] = await conn.query('SELECT code FROM workflow_states WHERE is_active=1'); const allowedStatuses = new Set(statuses.map((x) => x.code));
+    const categoryMap = new Map((await conn.query('SELECT id, name, aliases FROM categories'))[0].flatMap((x) => [[key(x.name), x.id], ...text(x.aliases).split(';').filter(Boolean).map((a) => [key(a), x.id])]));
+    const supplierRows = (await conn.query('SELECT id, name, tax_code FROM suppliers'))[0]; const supplierByName = new Map(supplierRows.map((x) => [key(x.name), x.id])); const supplierByTax = new Map(supplierRows.filter((x) => text(x.tax_code)).map((x) => [text(x.tax_code), x.id]));
+    async function categoryId(name) { const k = key(name); if (!k) return null; if (categoryMap.has(k)) return categoryMap.get(k); const [r] = await conn.query('INSERT INTO categories (code,name,aliases) VALUES (?,?,?)', [`IMP_${k}`.slice(0, 64), name, name]); categoryMap.set(k, r.insertId); summary.created_categories++; return r.insertId; }
+    async function supplierId(row) { const tax = text(row.supplier_tax_code); const k = key(row.supplier_name); if (!k) return null; if (tax && supplierByTax.has(tax)) return supplierByTax.get(tax); if (supplierByName.has(k)) return supplierByName.get(k); const [r] = await conn.query('INSERT INTO suppliers (name,tax_code) VALUES (?,?)', [row.supplier_name, tax || null]); supplierByName.set(k, r.insertId); if (tax) supplierByTax.set(tax, r.insertId); summary.created_suppliers++; return r.insertId; }
+    const teamRows = (await conn.query('SELECT id, code FROM teams'))[0]; const teams = new Map(teamRows.map((x) => [code(x.code), x.id])); async function teamId(teamCode) { if (!teamCode) return null; if (teams.has(teamCode)) return teams.get(teamCode); const [r] = await conn.query('INSERT INTO teams (code,name) VALUES (?,?)', [teamCode, teamCode]); teams.set(teamCode, r.insertId); return r.insertId; }
+    for (const [orderCode, lines] of orderGroups) {
+      const [existing] = await conn.query('SELECT id FROM orders WHERE order_code=? AND deleted_at IS NULL', [orderCode]); if (existing.length) { summary.skipped_orders++; continue; }
+      const h = lines[0]; const supplierIdValue = await supplierId(h); const [created] = await conn.query(`INSERT INTO orders (order_code,requester_email,requester_name,team_id,supplier_id,project_name,pm,status,status_raw,hang_muc,qdnb_link,request_date,expected_date,actual_date,handover_date,receiving_point,pr_no,contract_no,payment_method,payment_term,warehouse_status,note,import_batch_id,total_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`, [orderCode,h.requester_email,h.requester_name,await teamId(h.team_code),supplierIdValue,h.project_name,h.pm,allowedStatuses.has(h.status) ? h.status : 'new',h.status_raw,h.hang_muc,h.qdnb_link || null,h.request_date,h.expected_date,h.actual_date,h.handover_date,h.receiving_point,h.pr_no,h.contract_no,h.payment_method,h.payment_term,h.warehouse_status,h.note,batch.id]);
+      let total = 0; for (const line of lines) { const categoryIdValue = await categoryId(line.loai_hh); const lineSupplier = await supplierId(line); total += Number(line.line_total || 0); await conn.query(`INSERT INTO order_items (order_id,category_id,loai_hh,item_name,item_code,description,unit,quantity,unit_price,vat_rate,discount_rate,thanh_tien,tien_thue,line_total,image_url,quotation_url,design_link,progress,note,supplier_id,master_contract,so_pr) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [created.insertId,categoryIdValue,line.loai_hh,line.item_name,line.item_code || null,line.description || null,line.unit || null,line.quantity,line.unit_price,line.vat_rate,line.discount_rate,line.thanh_tien,line.tien_thue,line.line_total,line.image_url || null,line.quotation_url || null,line.design_link || null,line.progress || null,line.note || null,lineSupplier,line.master_contract || null,line.pr_no || null]); summary.created_items++; }
+      await conn.query('UPDATE orders SET total_amount=? WHERE id=?', [total, created.insertId]); if (supplierIdValue) await conn.query('INSERT INTO order_suppliers (order_id,supplier_id,payment_method,payment_time,contract_no,vendor_link) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE payment_method=VALUES(payment_method),payment_time=VALUES(payment_time),contract_no=VALUES(contract_no),vendor_link=VALUES(vendor_link)', [created.insertId,supplierIdValue,h.payment_method,h.payment_term,h.contract_no,h.vendor_link || null]); summary.created_orders++;
     }
-    result.categories = c;
-  }
+    await conn.query('UPDATE import_batches SET status=?, committed_at=NOW(), committed_by=?, summary_json=? WHERE id=?', ['committed', req.user.email, JSON.stringify(summary), batch.id]); await conn.commit(); res.json({ ok: true, summary });
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+}));
 
-  // ---- 2. NCC -> suppliers ----
-  const supMap = new Map(); // name(normalized) -> id
-  if (wb.Sheets['NCC']) {
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets['NCC'], { header: 1, defval: '' });
-    let c = 0;
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i];
-      const name = s(r[0]); if (!name) continue;
-      await query(
-        `INSERT INTO suppliers (name, tax_code, address, representative, contact_phone, contact_email, bank_name, bank_account, bank_branch, master_contract, rep_title, delivery_person, delivery_phone, delivery_email)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-         ON DUPLICATE KEY UPDATE tax_code=VALUES(tax_code), address=VALUES(address), representative=VALUES(representative),
-           contact_phone=VALUES(contact_phone), contact_email=VALUES(contact_email), bank_name=VALUES(bank_name),
-           bank_account=VALUES(bank_account), bank_branch=VALUES(bank_branch), master_contract=VALUES(master_contract),
-           rep_title=VALUES(rep_title), delivery_person=VALUES(delivery_person), delivery_phone=VALUES(delivery_phone), delivery_email=VALUES(delivery_email)`,
-        [name, s(r[1]), s(r[2]), s(r[3]), s(r[4]), s(r[5]), s(r[6]), s(r[7]), s(r[8]), s(r[9]), s(r[11]), s(r[12]), s(r[13]), s(r[14])]
-      );
-      c++;
-    }
-    result.suppliers = c;
-  }
-  // nạp map NCC hiện có
-  for (const row of await query('SELECT id, name FROM suppliers')) supMap.set(noAccent(row.name).toUpperCase().trim(), row.id);
-  async function supplierId(name) {
-    const key = noAccent(name).toUpperCase().trim();
-    if (!key) return null;
-    if (supMap.has(key)) return supMap.get(key);
-    const r = await query('INSERT INTO suppliers (name) VALUES (?)', [name]);
-    supMap.set(key, r.insertId);
-    return r.insertId;
-  }
-
-  // ---- 3. DATA -> orders + order_items (nhóm theo MA_DH) ----
-  if (wb.Sheets['DATA']) {
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets['DATA'], { defval: '' }).filter((r) => s(r.MA_DH) && !s(r.DA_XOA));
-    // team code -> id
-    const teamMap = new Map();
-    for (const row of await query('SELECT id, code FROM teams')) teamMap.set(row.code, row.id);
-    async function teamId(code) {
-      code = s(code).toUpperCase(); if (!code) return null;
-      if (teamMap.has(code)) return teamMap.get(code);
-      const r = await query('INSERT INTO teams (code, name) VALUES (?,?) ON DUPLICATE KEY UPDATE code=code', [code, code]);
-      const id = r.insertId || (await query('SELECT id FROM teams WHERE code=?', [code]))[0].id;
-      teamMap.set(code, id); return id;
-    }
-    // gom nhóm
-    const groups = new Map();
-    for (const r of rows) { const k = s(r.MA_DH); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
-
-    let orderN = 0, itemN = 0;
-    const conn = await pool.getConnection();
-    try {
-      for (const [maDh, lines] of groups) {
-        const h = lines[0];
-        const tId = await teamId(h.TEAM);
-        const sId = await supplierId(s(h.NCC));
-        await conn.query('DELETE FROM orders WHERE order_code = ?', [maDh]); // idempotent
-        await conn.query(
-          `INSERT INTO orders (order_code, requester_email, requester_name, team_id, supplier_id, project_name, pm, status, status_raw,
-             hang_muc, qdnb_tbkm, request_date, expected_date, actual_date, receiving_point, pr_no, contract_no, payment_method, payment_term,
-             warehouse_status, po_no, note, total_amount)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)`,
-          [maDh, s(h.EMAIL), s(h.TEN) || s(h.TEN_NGUOI_YEU_CAU), tId, sId, s(h.TEN_DU_AN), s(h.PM), mapStatus(h.TIEN_TRINH), s(h.TIEN_TRINH),
-            s(h.HANG_MUC), s(h.QDNB_TBKM), toDate(h.NGAY_YC), toDate(h.NGAY_NHAN), toDate(h.NGAY_THUC_NHAN), s(h.DIEM_NHAN), s(h.SO_PR),
-            s(h.SO_HOP_DONG), s(h.HINH_THUC_TT), s(h.THOI_HAN_TT), s(h.NHAP_KHO), s(h.PO_NO), s(h.GHI_CHU)]
-        );
-        const [[{ id: orderId }]] = await conn.query('SELECT LAST_INSERT_ID() AS id');
-        let total = 0;
-        for (const r of lines) {
-          const lineSup = await supplierId(s(r.NCC));
-          const tong = n(r.TONG_TIEN) || Math.round(n(r.SO_LUONG) * n(r.DON_GIA) * (1 + n(r.VAT)));
-          total += tong;
-          await conn.query(
-            `INSERT INTO order_items (order_id, loai_hh, item_name, description, quantity, unit_price, vat_rate, discount_rate,
-               thanh_tien, tien_thue, line_total, unit, supplier_id, master_contract, so_pr, quotation_url, design_link, note,
-               item_code, nhap_kho, qdnb_tbkm, image_url, progress)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [orderId, s(r.LOAI_HH), s(r.TEN_HANG), s(r.MO_TA_NGAN), n(r.SO_LUONG), n(r.DON_GIA), n(r.VAT), n(r.CHIET_KHAU),
-              n(r.THANH_TIEN), n(r.TIEN_THUE), tong, s(r.DVT), lineSup, s(r.MASTER_CONTRACT), s(r.SO_PR), s(r.FILE_BG),
-              s(r.THIET_KE) || s(r.LINK_THIET_KE), s(r.GHI_CHU), s(r.MA_HANG), s(r.NHAP_KHO), s(r.QDNB_TBKM), s(r.IMAGE_URL), s(r.TIEN_TRINH)]
-          );
-          itemN++;
-        }
-        await conn.query('UPDATE orders SET total_amount = ? WHERE id = ?', [total, orderId]);
-        orderN++;
-      }
-      result.orders = orderN; result.order_items = itemN;
-    } finally { conn.release(); }
-  }
-
-  res.json({ ok: true, ...result });
+router.post('/batches/:id/rollback', wrap(async (req, res) => {
+  const conn = await pool.getConnection(); try { await conn.beginTransaction(); const [batch] = await conn.query('SELECT * FROM import_batches WHERE id=? FOR UPDATE', [req.params.id]); if (!batch[0]) return res.status(404).json({ error: 'Không tìm thấy batch.' }); if (batch[0].status !== 'committed') return res.status(409).json({ error: 'Chỉ rollback batch đã commit.' }); const [r] = await conn.query('UPDATE orders SET deleted_at=NOW(), deleted_by=? WHERE import_batch_id=? AND deleted_at IS NULL', [req.user.email, req.params.id]); await conn.query('UPDATE import_batches SET status=?, rolled_back_at=NOW(), rolled_back_by=? WHERE id=?', ['rolled_back', req.user.email, req.params.id]); await conn.commit(); res.json({ ok: true, rolled_back_orders: r.affectedRows }); } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
 }));
 
 export default router;

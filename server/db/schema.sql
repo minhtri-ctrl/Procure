@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS orders (
   po_date          DATETIME NULL,               -- PO_DATE
   po_status        VARCHAR(64) NULL,            -- PO_STATUS (vd "Đã gửi NCC")
   note             TEXT NULL,                    -- GHI_CHU
+  import_batch_id  BIGINT UNSIGNED NULL,         -- nguồn import có thể rollback/audit
   created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -148,6 +149,26 @@ CREATE TABLE IF NOT EXISTS orders (
   KEY idx_orders_team (team_id),
   KEY idx_orders_supplier (supplier_id),
   KEY idx_orders_requester (requester_email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Lịch sử import: preview không làm thay đổi dữ liệu; chỉ batch đã commit mới có thể rollback.
+CREATE TABLE IF NOT EXISTS import_batches (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  checksum CHAR(64) NOT NULL,
+  filename VARCHAR(255) NOT NULL,
+  mapping_json LONGTEXT NULL,
+  preview_json LONGTEXT NULL,
+  summary_json LONGTEXT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'previewed',
+  created_by VARCHAR(190) NULL,
+  committed_by VARCHAR(190) NULL,
+  rolled_back_by VARCHAR(190) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  committed_at DATETIME NULL,
+  rolled_back_at DATETIME NULL,
+  PRIMARY KEY (id),
+  KEY idx_import_batches_checksum (checksum),
+  KEY idx_import_batches_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS order_suppliers (
