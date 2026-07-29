@@ -58,7 +58,7 @@ router.put('/:id', requireRole('admin', 'purchasing'), wrap(async (req, res) => 
   res.json({ ok: true });
 }));
 
-router.delete('/:id', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
+router.delete('/:id', requireRole('admin'), wrap(async (req, res) => {
   await query('DELETE FROM products WHERE id = ?', [req.params.id]);
   res.json({ ok: true });
 }));

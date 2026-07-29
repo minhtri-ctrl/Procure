@@ -8,6 +8,7 @@ export default function Warehouse() {
   const { user } = useAuth();
   const { L } = useMeta();
   const canWrite = ['admin', 'purchasing', 'warehouse'].includes(user.role);
+  const isAdmin = user.role === 'admin';
   const [tab, setTab] = useState('stock');
   const [stock, setStock] = useState([]);
   const [moves, setMoves] = useState([]);
@@ -138,7 +139,7 @@ export default function Warehouse() {
                     <td className="r">{fmtNum(v.line_count)}</td><td className="r">{fmtNum(v.total_qty)}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="btn-sm" onClick={() => printVoucher(v)}>🖨 In phiếu</button>{' '}
-                      {canWrite && <button className="btn-sm btn-danger" onClick={() => deleteVoucher(v)}>Xoá</button>}
+                      {isAdmin && <button className="btn-sm btn-danger" onClick={() => deleteVoucher(v)}>Xoá</button>}
                     </td>
                   </tr>
                 ))}

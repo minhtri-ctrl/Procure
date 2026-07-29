@@ -13,7 +13,7 @@ export default function Requests() {
   const { user } = useAuth();
   const { L } = useMeta();
   const canWrite = ['admin', 'purchasing'].includes(user.role);
-  const canPurge = ['admin', 'pm'].includes(user.role);
+  const isAdmin = user.role === 'admin';
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
@@ -49,7 +49,7 @@ export default function Requests() {
           </select>
           <div className="spacer" />
           <button className="btn-primary" onClick={() => setCreating(true)}>+ Tạo yêu cầu</button>
-          {canPurge && <BulkDeleteButton entity="yêu cầu mua" countPath="/requests/count" deletePath="/requests" onDone={(n) => { alert(`Đã xóa ${n} yêu cầu`); load(); }} />}
+          {isAdmin && <BulkDeleteButton entity="yêu cầu mua" countPath="/requests/count" deletePath="/requests" onDone={(n) => { alert(`Đã xóa ${n} yêu cầu`); load(); }} />}
         </div>
         {err && <div className="error">{err}</div>}
         <div className="table-wrap">
@@ -114,7 +114,7 @@ export default function Requests() {
               <button className="btn-primary" onClick={() => convert(detail.id)}>Tạo đơn hàng</button>
             </div>
           )}
-          {canWrite && (
+          {isAdmin && (
             <div className="modal-actions" style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 10 }}>
               <button className="btn-danger" onClick={() => delOne(detail.id, detail.request_code)}>🗑 Xóa yêu cầu này</button>
             </div>

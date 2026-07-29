@@ -124,7 +124,7 @@ router.post('/orders/:orderId/attachments', wrap(async (req, res) => {
     res.status(201).json({ id: attachment.insertId, linked_items: requestedLinks.length });
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
 }));
-router.delete('/orders/:orderId/attachments/:linkId', wrap(async (req, res) => {
+router.delete('/orders/:orderId/attachments/:linkId', requireRole('admin'), wrap(async (req, res) => {
   const [link] = await query('SELECT attachment_id FROM order_quote_attachments WHERE id=? AND order_id=?', [req.params.linkId, req.params.orderId]);
   if (!link) return res.status(404).json({ error: 'Không tìm thấy liên kết file báo giá.' });
   await query('DELETE FROM order_quote_attachments WHERE id=?', [req.params.linkId]);

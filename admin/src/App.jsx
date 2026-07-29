@@ -129,18 +129,18 @@ export default function App() {
         <Route path="/ai" element={<AIAssistant />} />
         <Route path="/quote-comparison" element={canWrite ? <QuoteComparison /> : <Navigate to="/orders" replace />} />
         <Route path="/suppliers" element={<CrudPage
-          title="Nhà cung cấp" endpoint="/suppliers" canWrite={canWrite}
+          title="Nhà cung cấp" endpoint="/suppliers" canWrite={canWrite} canDelete={user.role === 'admin'}
           importEndpoint="/suppliers/import"
           columns={SUPPLIER_COLUMNS}
           fields={SUPPLIER_FIELDS}
         />} />
         <Route path="/teams" element={<CrudPage
-          title="Team" endpoint="/teams" canWrite={canWrite}
+          title="Team" endpoint="/teams" canWrite={canWrite} canDelete={user.role === 'admin'}
           columns={TEAM_COLUMNS}
           fields={TEAM_FIELDS}
         />} />
         <Route path="/categories" element={<CrudPage
-          title="Loại hàng" endpoint="/categories" canWrite={canWrite}
+          title="Loại hàng" endpoint="/categories" canWrite={canWrite} canDelete={user.role === 'admin'}
           columns={CATEGORY_COLUMNS}
           fields={CATEGORY_FIELDS}
         />} />

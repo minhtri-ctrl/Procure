@@ -43,7 +43,7 @@ router.post('/:kind/:refId', authRequired, requireRole('admin', 'purchasing', 'w
 }));
 
 // Xoá ảnh (bám procureClearImageByRow: clear URL).
-router.delete('/:kind/:refId', authRequired, requireRole('admin', 'purchasing', 'warehouse'), wrap(async (req, res) => {
+router.delete('/:kind/:refId', authRequired, requireRole('admin'), wrap(async (req, res) => {
   const t = TARGET[req.params.kind];
   if (!t) return res.status(400).json({ error: 'kind không hợp lệ' });
   await query('DELETE FROM attachments WHERE kind = ? AND ref_id = ?', [req.params.kind, req.params.refId]);

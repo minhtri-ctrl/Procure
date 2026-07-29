@@ -173,7 +173,7 @@ router.post('/:id/convert', requireRole('admin', 'purchasing'), wrap(async (req,
 }));
 
 // Xóa TOÀN BỘ yêu cầu mua (soft delete) — chỉ admin/PM. PM chỉ xóa trong team mình.
-router.delete('/', requireRole('admin', 'pm'), wrap(async (req, res) => {
+router.delete('/', requireRole('admin'), wrap(async (req, res) => {
   if (!req.body || req.body.confirm !== true) {
     return res.status(400).json({ error: 'Cần xác nhận (confirm: true) để xóa toàn bộ' });
   }
@@ -189,7 +189,7 @@ router.delete('/', requireRole('admin', 'pm'), wrap(async (req, res) => {
 }));
 
 // Xóa 1 YC (soft delete).
-router.delete('/:id', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
+router.delete('/:id', requireRole('admin'), wrap(async (req, res) => {
   const r = await query(
     'UPDATE purchase_requests SET deleted_at = NOW(), deleted_by = ? WHERE id = ? AND deleted_at IS NULL',
     [req.user.email, req.params.id]

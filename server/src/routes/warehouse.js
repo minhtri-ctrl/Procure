@@ -233,7 +233,7 @@ router.get('/vouchers/:voucherNo/print', wrap(async (req, res) => {
 }));
 
 // ---- Xoá phiếu (xoá toàn bộ dòng của 1 số chứng từ + dựng lại tồn) ----
-router.delete('/vouchers/:voucherNo', requireRole(...WH_ROLES), wrap(async (req, res) => {
+router.delete('/vouchers/:voucherNo', requireRole('admin'), wrap(async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();

@@ -126,8 +126,8 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; c
 .orders-filtermore { padding: 8px 0; }
 .orders-filtermore input { width: 145px; }
 .orders-kanban { display: flex; gap: 12px; overflow-x: auto; align-items: flex-start; padding-bottom: 8px; }
-.orders-lane { width: 280px; min-width: 280px; border: 1px solid var(--border); border-radius: 10px; background: #f8fafc; padding: 8px; }
-.orders-lane-head { display: flex; justify-content: space-between; padding: 4px 4px 10px; }
+.orders-lane { width: 300px; min-width: 300px; border: 1px solid var(--border); border-radius: 10px; background: #f8fafc; padding: 8px; }
+.orders-lane-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 4px 10px; }
 .orders-lane-head span { color: var(--muted); }
 .orders-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 8px; cursor: pointer; font-size: 13px; }
 .orders-card > div { margin: 5px 0; }
@@ -137,8 +137,9 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; c
 .orders-primary strong, .orders-primary span, .orders-table td > span:not(.orders-status) { display: block; }
 .orders-primary span { margin-top: 2px; color: var(--muted); max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 .orders-cell-meta { margin-top: 2px; color: var(--muted); font-size: 12px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.orders-status { margin-top: 5px; }
-.orders-open { width: 1%; }
+.orders-status-cell { text-align: left; white-space: nowrap; }
+.orders-open { width: 1%; white-space: nowrap; }
+.orders-open .btn-danger { margin-left: 5px; }
 .spacer { flex: 1; }
 .error { color: var(--red); font-size: 13px; margin: 8px 0; }
 .muted { color: var(--muted); }

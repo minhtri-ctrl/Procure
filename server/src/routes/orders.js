@@ -512,7 +512,7 @@ router.post('/:id/quote-response', wrap(async (req, res) => {
 
 // Xóa TOÀN BỘ đơn hàng (soft delete) — chỉ admin/PM. PM chỉ xóa trong phạm vi team mình.
 // Yêu cầu body { confirm: true } để tránh gọi nhầm.
-router.delete('/', requireRole('admin', 'pm'), wrap(async (req, res) => {
+router.delete('/', requireRole('admin'), wrap(async (req, res) => {
   if (!req.body || req.body.confirm !== true) {
     return res.status(400).json({ error: 'Cần xác nhận (confirm: true) để xóa toàn bộ' });
   }
@@ -528,7 +528,7 @@ router.delete('/', requireRole('admin', 'pm'), wrap(async (req, res) => {
 }));
 
 // Xóa 1 đơn hàng (soft delete) — có thể khôi phục.
-router.delete('/:id', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
+router.delete('/:id', requireRole('admin'), wrap(async (req, res) => {
   const r = await query(
     'UPDATE orders SET deleted_at = NOW(), deleted_by = ? WHERE id = ? AND deleted_at IS NULL',
     [req.user.email, req.params.id]
@@ -568,7 +568,7 @@ router.put('/items/:itemId', requireRole('admin', 'purchasing'), wrap(async (req
   res.json({ ok: true, sync: row ? await syncOrderStatusFromItems(row.order_id, req.user.email) : null });
 }));
 
-router.delete('/items/:itemId', requireRole('admin', 'purchasing'), wrap(async (req, res) => {
+router.delete('/items/:itemId', requireRole('admin'), wrap(async (req, res) => {
   const row = await getItem(req.params.itemId);
   await query('DELETE FROM order_items WHERE id = ?', [req.params.itemId]);
   if (row) await recalcTotal(row.order_id);

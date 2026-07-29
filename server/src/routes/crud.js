@@ -4,8 +4,8 @@ import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap, pick, toSet } from '../util.js';
 
 // Factory tạo CRUD router chuẩn cho 1 bảng master data đơn giản.
-// opts: { table, fields, searchCols, writeRoles }
-export function crudRouter({ table, fields, searchCols = [], writeRoles = ['admin', 'purchasing'] }) {
+// opts: { table, fields, searchCols, writeRoles, deleteRoles }
+export function crudRouter({ table, fields, searchCols = [], writeRoles = ['admin', 'purchasing'], deleteRoles = ['admin'] }) {
   const router = Router();
   router.use(authRequired);
 
@@ -57,7 +57,7 @@ export function crudRouter({ table, fields, searchCols = [], writeRoles = ['admi
   }));
 
   // DELETE
-  router.delete('/:id', requireRole(...writeRoles), wrap(async (req, res) => {
+  router.delete('/:id', requireRole(...deleteRoles), wrap(async (req, res) => {
     await query(`DELETE FROM \`${table}\` WHERE id = ?`, [req.params.id]);
     res.json({ ok: true });
   }));

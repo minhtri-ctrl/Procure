@@ -9,6 +9,7 @@ const TYPE_LABEL = { DDH: 'Đơn đặt hàng', HD: 'Hợp đồng DV' };
 export default function Contracts() {
   const { user } = useAuth();
   const canWrite = ['admin', 'purchasing'].includes(user.role);
+  const isAdmin = user.role === 'admin';
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
@@ -83,7 +84,7 @@ export default function Contracts() {
                     <button className="btn-sm" onClick={() => viewDoc(c)}>Xem</button>{' '}
                     <button className="btn-sm" onClick={() => downloadDocx(c)}>⬇ .docx</button>{' '}
                     {canWrite && <button className="btn-sm" onClick={() => setEditing(c)}>Sửa</button>}{' '}
-                    {canWrite && <button className="btn-sm btn-danger" onClick={() => del(c)}>Xoá</button>}
+                    {isAdmin && <button className="btn-sm btn-danger" onClick={() => del(c)}>Xoá</button>}
                   </td>
                 </tr>
               ))}

@@ -8,6 +8,7 @@ import ImageLightbox from '../components/ImageLightbox.jsx';
 export default function Products() {
   const { user } = useAuth();
   const canWrite = ['admin', 'purchasing'].includes(user.role);
+  const isAdmin = user.role === 'admin';
   const [rows, setRows] = useState([]);
   const [cats, setCats] = useState([]);
   const [q, setQ] = useState('');
@@ -87,7 +88,7 @@ export default function Products() {
                   <td>{p.supplier_name || '-'}</td>
                   {canWrite && <td>
                     <button className="btn-sm" onClick={() => openEdit(p)}>Sửa</button>{' '}
-                    <button className="btn-sm btn-danger" onClick={() => remove(p)}>Xoá</button>
+                    {isAdmin && <button className="btn-sm btn-danger" onClick={() => remove(p)}>Xoá</button>}
                   </td>}
                 </tr>
               ))}
@@ -129,7 +130,7 @@ export default function Products() {
               />
             )}
             <input type="file" accept="image/*" onChange={onPickFile} />
-            {(imgData || form.image_url) && <button type="button" className="btn-sm btn-danger" style={{ marginTop: 6 }} onClick={removeImg}>Xoá ảnh</button>}
+            {isAdmin && (imgData || form.image_url) && <button type="button" className="btn-sm btn-danger" style={{ marginTop: 6 }} onClick={removeImg}>Xoá ảnh</button>}
           </div>
           {err && <div className="error">{err}</div>}
         </Modal>

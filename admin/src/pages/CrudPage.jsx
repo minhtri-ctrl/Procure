@@ -12,7 +12,7 @@ function invalidateSupplierCache(endpoint) {
 }
 
 // Trang CRUD dùng chung cho các danh mục đơn giản.
-export default function CrudPage({ title, endpoint, columns, fields, canWrite = true, importEndpoint }) {
+export default function CrudPage({ title, endpoint, columns, fields, canWrite = true, canDelete = false, importEndpoint }) {
   const { L } = useMeta();
   const colLabel = (c) => L(colLabelKey(endpoint, c.key), c.label);
   const fieldLabel = (f) => L(fieldLabelKey(endpoint, f.key), f.label);
@@ -90,15 +90,15 @@ export default function CrudPage({ title, endpoint, columns, fields, canWrite = 
         {err && <div className="error">{err}</div>}
         <div className="table-wrap">
           <table>
-            <thead><tr>{columns.map((c) => <th key={c.key}>{colLabel(c)}</th>)}{canWrite && <th></th>}</tr></thead>
+            <thead><tr>{columns.map((c) => <th key={c.key}>{colLabel(c)}</th>)}{(canWrite || canDelete) && <th></th>}</tr></thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
                   {columns.map((c) => <td key={c.key}>{row[c.key] ?? ''}</td>)}
-                  {canWrite && (
+                  {(canWrite || canDelete) && (
                     <td>
-                      <button className="btn-sm" onClick={() => openEdit(row)}>{L('common.edit')}</button>{' '}
-                      <button className="btn-sm btn-danger" onClick={() => remove(row)}>{L('common.delete')}</button>
+                      {canWrite && <button className="btn-sm" onClick={() => openEdit(row)}>{L('common.edit')}</button>}{canWrite && canDelete && ' '}
+                      {canDelete && <button className="btn-sm btn-danger" onClick={() => remove(row)}>{L('common.delete')}</button>}
                     </td>
                   )}
                 </tr>

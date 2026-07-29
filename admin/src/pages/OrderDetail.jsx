@@ -98,7 +98,7 @@ export default function OrderDetail() {
         <div>
           <button onClick={() => nav('/orders')}>← Quay lại</button>{' '}
           {canWrite && <button onClick={() => setEditHdr(true)}>✏️ Sửa đơn</button>}{' '}
-          {canWrite && <button className="btn-danger" onClick={del}>Xoá</button>}
+          {user.role === 'admin' && <button className="btn-danger" onClick={del}>Xoá</button>}
         </div>
       </div>
       <div className="content">
@@ -227,7 +227,7 @@ export default function OrderDetail() {
                         <button className="btn-sm" onClick={(e) => { e.stopPropagation(); setEditing(it); }}>Sửa</button>{' '}
                         {!it.in_catalog && <button className="btn-sm" title="Đẩy sang Danh mục SP → sinh mã hàng, chờ nhập kho" onClick={() => toCatalog(it.id)}>→ Kho</button>}{' '}
                         <button className="btn-sm" title="Bàn giao trực tiếp cho Requester" onClick={(e) => { e.stopPropagation(); handover(it.id); }}>Bàn giao</button>{' '}
-                        <button className="btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); deleteLine(it.id); }}>Xóa</button>
+                        {user.role === 'admin' && <button className="btn-sm btn-danger" onClick={(e) => { e.stopPropagation(); deleteLine(it.id); }}>Xóa</button>}
                       </td>
                     )}
                   </tr>
@@ -238,7 +238,7 @@ export default function OrderDetail() {
         </div>
       </div>
 
-      {(() => { const general = (o.quote_attachments || []).filter((file) => !file.order_item_id); return general.length ? <div className="card" style={{ marginTop: 16 }}><h3 style={{ marginTop: 0 }}>Báo giá cấp đơn</h3><div className="muted" style={{ marginBottom: 8 }}>Các file này chưa gắn với một dòng hàng cụ thể nên không hiển thị ở cột BG của dòng.</div>{general.map((file) => <div key={file.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}><QuoteFileActions orderId={o.id} file={file} />{canWrite && <button className="btn-sm btn-danger" onClick={async () => { if (confirm('Xóa liên kết file báo giá này?')) { await api.del(`/quotation-extractions/orders/${id}/attachments/${file.id}`); load(); } }}>Xóa</button>}</div>)}</div> : null; })()}
+      {(() => { const general = (o.quote_attachments || []).filter((file) => !file.order_item_id); return general.length ? <div className="card" style={{ marginTop: 16 }}><h3 style={{ marginTop: 0 }}>Báo giá cấp đơn</h3><div className="muted" style={{ marginBottom: 8 }}>Các file này chưa gắn với một dòng hàng cụ thể nên không hiển thị ở cột BG của dòng.</div>{general.map((file) => <div key={file.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0' }}><QuoteFileActions orderId={o.id} file={file} />{user.role === 'admin' && <button className="btn-sm btn-danger" onClick={async () => { if (confirm('Xóa liên kết file báo giá này?')) { await api.del(`/quotation-extractions/orders/${id}/attachments/${file.id}`); load(); } }}>Xóa</button>}</div>)}</div> : null; })()}
       {editing && <LineEdit item={editing} orderId={o.id} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
       {supplierEdit && <OrderSupplierEdit orderId={o.id} supplier={supplierEdit} onClose={() => setSupplierEdit(null)} onSaved={() => { setSupplierEdit(null); load(); }} />}
       {editHdr && <EditOrder order={o} teams={teams} onClose={() => setEditHdr(false)} onSaved={() => { setEditHdr(false); load(); }} />}
