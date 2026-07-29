@@ -18,6 +18,7 @@ export const NAV = [
   { to: '/contracts', key: 'menu.contracts', label: '📄 Hợp đồng', roles: OPS },
   { to: '/emails', key: 'menu.emails', label: '✉️ Email', roles: OPS },
   { to: '/ai', key: 'menu.ai', label: '🤖 Trợ lý AI', roles: OPS },
+  { to: '/quote-comparison', key: 'menu.quote_comparison', label: '📊 So sánh báo giá', roles: OPS },
   { section: true, key: 'menu.section.catalog', label: 'Danh mục', roles: OPS },
   { to: '/suppliers', key: 'menu.suppliers', label: '🏢 Nhà cung cấp', roles: OPS },
   { to: '/teams', key: 'menu.teams', label: '👥 Team', roles: OPS },

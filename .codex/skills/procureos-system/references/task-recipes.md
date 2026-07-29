@@ -148,3 +148,9 @@ powershell -ExecutionPolicy Bypass -File scripts\pack-deployment.ps1
 3. Preserve a raw source excerpt and parser sheet/row (when available) so the user can compare before applying.
 4. Update `CreateOrder.jsx` and `server/src/routes/demo.js` together; demo must identify parser/mock results and never create an order automatically.
 5. Validate file signature and 5 MB limits for PDF/DOC/DOCX/PNG/JPEG/WEBP. Extract DOCX text server-side with `PizZip` before structured AI extraction; send legacy DOC as a typed AI file input and surface a clear Save-as-DOCX fallback if the provider rejects it. Send inline PDF content as `data:application/pdf;base64,...`; images use a typed data URL. Run `node --check server/src/lib/quotationExtraction.js`, `node --check server/src/routes/quotationExtraction.js`, frontend build, then smoke the endpoint with a CSV upload after demo login. Test a real PDF/image/Word only after a user-configured OpenAI key is confirmed; do not print the key.
+
+## Compare quotations
+
+1. As admin/purchasing, open `/quote-comparison` and select one to three independent files.
+2. Confirm original file links, extraction failures, totals before/after VAT, row non-matches, and source warnings.
+3. Adjust weights, verify the `mode` label, and treat the recommendation as advisory; use the existing explicit order workflow to apply any chosen supplier/rows.

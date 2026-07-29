@@ -26,6 +26,7 @@
 | `/contracts` | `Contracts.jsx` | Contract list/create/templates |
 | `/emails` | `Emails.jsx` | Preview/send/logs/ratings |
 | `/ai` | `AIAssistant.jsx` | AI assistant |
+| `/quote-comparison` | `QuoteComparison.jsx` | Compare up to three quotation sources |
 | `/suppliers`, `/teams`, `/categories` | `CrudPage.jsx` | Master-data CRUD |
 | `/users` | `Users.jsx` | User admin |
 | `/admin/workflow` | `WorkflowConfig.jsx` | Workflow states |
@@ -114,3 +115,7 @@ Remove-Item admin\spa.html -Force
 ```
 
 Restart backend after rebuild because it caches `spa.tpl` at startup.
+
+## Quote comparison
+
+`QuoteComparison.jsx` sends at most three independent sources to `/quotation-extractions/compare`, retains browser preview/download links, and shows totals, row matches, score, evidence, and warnings without mixing supplier data. The result is advisory and labels AI versus rule/demo-parser mode; it never changes an order implicitly.

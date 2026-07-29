@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { query } from '../db.js';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap } from '../util.js';
 import { config } from '../config.js';
 import { moneyVnd } from '../lib/vn.js';
 
 const router = Router();
-router.use(authRequired);
+// Assistant is read-only, but operational-data access is limited to procurement roles.
+router.use(authRequired, requireRole('admin', 'purchasing'));
 
 // ---- Bộ công cụ (function tools) đọc dữ liệu thật, bám procureAskAI ----
 const TOOLS = [

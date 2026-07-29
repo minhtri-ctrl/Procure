@@ -154,6 +154,7 @@ List response usually uses `{ data, total, page, limit }`.
 ## Quotation batch and source attachments
 
 - `POST /quotation-extractions/extract-batch` accepts up to 3 independent files as `{ files: [{ client_id, filename, data_base64 }] }`. Each file returns its own status, fingerprint, rows, and supplier-match result; one failure does not discard other files.
+- `POST /quotation-extractions/compare` accepts the same independent batch and optional comparison weights. It returns validated per-item/per-quote cells, VAT totals, internal supplier history, warnings, and one advisory recommendation. It never persists source files or changes orders, suppliers, or lines; `mode` is `ai`, `rule-based`, or `demo-rule-based`.
 - `GET|POST /quotation-extractions/orders/:orderId/attachments` lists or creates quotation-source links. POST stores one blob and accepts `links: [{ item_id, supplier_id, source_supplier_name }]`, keeping multi-NCC source files attached only to their explicit item/NCC pairs. Legacy `item_ids` remains accepted.
 - `GET /quotation-extractions/orders/:orderId/attachments/:linkId/file?download=1` returns the original blob only when the link belongs to the requested order, preserving filename and MIME. Omit `download=1` for safe inline preview.
 - `DELETE /quotation-extractions/orders/:orderId/attachments/:linkId` deletes one relation and removes the blob only when no relation remains.

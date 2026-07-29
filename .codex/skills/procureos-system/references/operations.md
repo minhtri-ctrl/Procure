@@ -158,3 +158,7 @@ API health works but UI uses old bundle:
 - Server listens on `PORT`, default `8080`.
 - Root `package.json` must remain present for Node detection.
 - Before a major UI change, create a named Git snapshot commit/branch. Deploy only after syntax/build/API smoke passes; the demo production flow deploys from the configured GitHub repository and must not be guessed if access/configuration is absent.
+
+## Quote comparison mode
+
+`/quotation-extractions/compare` reuses the same server-side extraction limits as quotation review. Without a valid OpenAI configuration (or in demo mode without `DEMO_ALLOW_EXTERNAL_AI=1`), it returns a clearly labelled `rule-based` or `demo-rule-based` comparison; no source document is sent to an external provider.

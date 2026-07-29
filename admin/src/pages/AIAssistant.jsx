@@ -23,8 +23,8 @@ export default function AIAssistant() {
     setMessages((m) => [...m, { role: 'user', content: msg }]);
     setBusy(true);
     try {
-      const r = await api.post('/ai/chat', { message: msg, history });
-      setMessages((m) => [...m, { role: 'assistant', content: r.reply }]);
+      const r = await api.post('/ai/chat', { message: msg.slice(0, 4000), history: history.slice(-8) });
+      setMessages((m) => [...m, { role: 'assistant', content: r.reply || r.answer || 'Trợ lý chưa trả về nội dung.' }]);
     } catch (e) {
       setMessages((m) => [...m, { role: 'assistant', content: '⚠️ Lỗi: ' + e.message }]);
     } finally { setBusy(false); }
@@ -37,6 +37,7 @@ export default function AIAssistant() {
         {status && <span className="muted" style={{ fontSize: 12 }}>Chế độ: {status.model}</span>}
       </div>
       <div className="content">
+        {status && !status.enabled && <div className="card" style={{ marginBottom: 12 }}>AI chưa được cấu hình. Trợ lý đang dùng chế độ nội bộ/demo; không có dữ liệu hoặc API key nào được trả về trình duyệt.</div>}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 160px)' }}>
           <div ref={boxRef} style={{ flex: 1, overflowY: 'auto', padding: 4 }}>
             {messages.map((m, i) => (

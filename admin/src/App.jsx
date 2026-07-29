@@ -19,6 +19,7 @@ import Warehouse from './pages/Warehouse.jsx';
 import Emails from './pages/Emails.jsx';
 import Contracts from './pages/Contracts.jsx';
 import AIAssistant from './pages/AIAssistant.jsx';
+import QuoteComparison from './pages/QuoteComparison.jsx';
 import ItemBoard from './pages/ItemBoard.jsx';
 import NotificationBell from './components/NotificationBell.jsx';
 import LabelSettings from './pages/LabelSettings.jsx';
@@ -126,6 +127,7 @@ export default function App() {
         <Route path="/contracts" element={<Contracts />} />
         <Route path="/emails" element={<Emails />} />
         <Route path="/ai" element={<AIAssistant />} />
+        <Route path="/quote-comparison" element={canWrite ? <QuoteComparison /> : <Navigate to="/orders" replace />} />
         <Route path="/suppliers" element={<CrudPage
           title="Nhà cung cấp" endpoint="/suppliers" canWrite={canWrite}
           importEndpoint="/suppliers/import"

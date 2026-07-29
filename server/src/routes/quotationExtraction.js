@@ -4,6 +4,7 @@ import { query, pool } from '../db.js';
 import { authRequired, requireRole } from '../middleware/auth.js';
 import { wrap } from '../util.js';
 import { extractQuotation, QUOTATION_MAX_BYTES, QUOTATION_ACCEPTED } from '../lib/quotationExtraction.js';
+import { compareQuotes } from '../lib/quoteComparison.js';
 
 const router = Router();
 const ACCEPTED = QUOTATION_ACCEPTED;
@@ -48,6 +49,13 @@ async function batch(files) {
 
 router.use(authRequired, requireRole('admin', 'purchasing'));
 router.post('/extract-batch', wrap(async (req, res) => res.json(await batch(req.body?.files))));
+router.post('/compare', wrap(async (req, res) => {
+  const result = await batch(req.body?.files);
+  const supplierRows = await query(`SELECT s.id, s.name, COUNT(i.id) AS purchase_count, COALESCE(AVG(r.score), 0) AS reputation_score
+    FROM suppliers s LEFT JOIN order_items i ON i.supplier_id=s.id LEFT JOIN ratings r ON r.supplier_id=s.id
+    WHERE s.is_active=1 GROUP BY s.id, s.name`);
+  res.json({ extraction: result, comparison: await compareQuotes(result.files, req.body?.weights, supplierRows) });
+}));
 router.post('/extract', wrap(async (req, res) => {
   const { filename, data_base64, client_id } = req.body || {};
   const result = await batch([{ filename, data_base64, client_id }]);

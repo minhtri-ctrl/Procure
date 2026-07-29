@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authRequired, signToken } from '../middleware/auth.js';
 import { config } from '../config.js';
 import { extractQuotation, QUOTATION_MAX_BYTES, QUOTATION_ACCEPTED } from '../lib/quotationExtraction.js';
+import { compareQuotes } from '../lib/quoteComparison.js';
 
 const router = Router();
 
@@ -365,6 +366,18 @@ router.post('/quotation-extractions/extract-batch', (req, res, next) => {
   const files = Array.isArray(req.body?.files) ? req.body.files : [];
   if (!files.length || files.length > 3) return res.status(400).json({ error: 'Chọn từ 1 đến 3 file báo giá.' });
   Promise.all(files.map(demoExtract)).then((results) => ok(res, { files: results, limits: { max_bytes: QUOTATION_MAX_BYTES, max_files: 3, max_batch_bytes: 12 * 1024 * 1024, accepted: QUOTATION_ACCEPTED } })).catch(next);
+});
+router.post('/quotation-extractions/compare', async (req, res, next) => {
+  try {
+    const files = Array.isArray(req.body?.files) ? req.body.files.slice(0, 3) : [];
+    if (!files.length) return res.status(400).json({ error: 'Cần chọn ít nhất một file báo giá.' });
+    const results = await Promise.all(files.map(async (file) => {
+      try { const extracted = await extractQuotation({ filename: file.filename, dataBase64: file.data_base64 }); return { client_id: file.client_id, filename: file.filename, fingerprint: `demo-${file.client_id}`, status: 'success', ...extracted, items: extracted.items || [] }; }
+      catch (error) { return { client_id: file.client_id, filename: file.filename, status: 'error', error: error.message }; }
+    }));
+    const supplierRows = suppliers.map((supplier) => ({ ...supplier, purchase_count: orders.filter((order) => String(order.supplier_id) === String(supplier.id)).length, reputation_score: 0 }));
+    ok(res, { extraction: { files: results }, comparison: await compareQuotes(results, req.body?.weights, supplierRows) });
+  } catch (error) { next(error); }
 });
 router.post('/quotation-extractions/extract', (req, res, next) => {
   try {
