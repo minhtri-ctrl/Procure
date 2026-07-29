@@ -152,6 +152,7 @@ API health works but UI uses old bundle:
 
 - Deploy runner can misclassify project as static HTML if `.html` remains in workspace.
 - Do not commit `admin/spa.html`.
+- If the Demo System imports GitHub, it replaces the project workspace. Upload any private `.env` ZIP only **after** the GitHub import and before pressing Deploy. Use `deployment-ai.env.template` as the safe source template: copy it to `.env`, enter the key locally, ZIP that single `.env` file, then upload the archive. Never add a real key to `.env.example`, Git, or a GitHub import.
 - Server listens on `PORT`, default `8080`.
 - Root `package.json` must remain present for Node detection.
 - Before a major UI change, create a named Git snapshot commit/branch. Deploy only after syntax/build/API smoke passes; the demo production flow deploys from the configured GitHub repository and must not be guessed if access/configuration is absent.
