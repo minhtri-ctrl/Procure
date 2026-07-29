@@ -15,7 +15,7 @@ if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
 }
 
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("procureos-deployment-" + [Guid]::NewGuid().ToString('N'))
-$excludedNames = @('.git', 'node_modules', '.agents', 'procureos-deployment.zip')
+$excludedNames = @('.git', 'node_modules', '.agents', '.codex', 'procureos-deployment.zip')
 
 try {
   New-Item -ItemType Directory -Path $stage | Out-Null
@@ -27,6 +27,12 @@ try {
     }
     Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $stage $_.Name) -Recurse -Force
   }
+
+  # Dependencies are restored by `npm install` in the deployment runner. Remove
+  # nested dependency folders copied with subprojects such as admin/.
+  Get-ChildItem -LiteralPath $stage -Directory -Recurse -Force |
+    Where-Object { $_.Name -eq 'node_modules' } |
+    Remove-Item -Recurse -Force
 
   # The generated bundle must contain the deployable source plus this local-only
   # server configuration at its root. It is never written back into the repository.
