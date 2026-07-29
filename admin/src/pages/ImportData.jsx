@@ -2,6 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { refreshSuppliers } from '../components/SupplierSelect.jsx';
 
+const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Không thể đọc file Excel. Hãy chọn lại file và thử lại.'));
+    reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+    reader.readAsDataURL(file);
+  });
+}
+
 const columns = ['source_row', 'order_code', 'item_name', 'quantity', 'unit_price', 'vat_rate', 'supplier_name', 'loai_hh', 'request_date', 'expected_date'];
 const label = { source_row: 'Dòng', order_code: 'Mã đơn', item_name: 'Tên hàng', quantity: 'SL', unit_price: 'Đơn giá', vat_rate: 'VAT', supplier_name: 'NCC', loai_hh: 'Loại hàng', request_date: 'Ngày YC', expected_date: 'Ngày nhận' };
 
@@ -14,7 +25,12 @@ export default function ImportData() {
   const choose = (event) => { setFile(event.target.files?.[0] || null); setPreview(null); setError(''); setMessage(''); };
   const inspect = async () => {
     if (!file) return; setBusy(true); setError(''); setMessage('');
-    try { const content = await file.arrayBuffer(); const b64 = btoa(String.fromCharCode(...new Uint8Array(content))); setPreview(await api.post('/import/preview', { fileBase64: b64, filename: file.name })); }
+    try {
+      if (file.size > MAX_IMPORT_FILE_BYTES) throw new Error('File Excel vượt quá 10 MB. Hãy tối ưu hoặc tách file trước khi nhập.');
+      const b64 = await readFileAsBase64(file);
+      if (!b64) throw new Error('File Excel rỗng hoặc không thể mã hóa.');
+      setPreview(await api.post('/import/preview', { fileBase64: b64, filename: file.name }));
+    }
     catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const commit = async () => { if (!preview) return; setBusy(true); setError(''); try { const result = await api.post(`/import/batches/${preview.batch_id}/commit`, {}); setMessage(`Đã nhập ${result.summary.created_orders} đơn và ${result.summary.created_items} dòng hàng; bỏ qua ${result.summary.skipped_orders} đơn đã tồn tại.`); refreshSuppliers(); loadHistory(); } catch (e) { setError(e.message); } finally { setBusy(false); } };
