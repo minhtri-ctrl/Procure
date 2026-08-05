@@ -1,0 +1,4 @@
+interface:
+  display_name: "ProcureOS System"
+  short_description: "Context pack for ProcureOS Web tasks"
+  default_prompt: "Use this skill when working on ProcureOS Web so you can load only the relevant architecture, workflow, API, and schema references instead of rereading the whole repository."

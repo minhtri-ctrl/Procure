@@ -7,3 +7,5 @@ admin/spa.html
 .DS_Store
 dist/
 secrets/
+outputs/
+procureos-deployment.zip

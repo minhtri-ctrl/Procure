@@ -44,6 +44,18 @@ Read only the relevant reference:
    - Frontend build: `node admin/gen-entry.js`, `npm --prefix admin run build`, then rename `server/webui/spa.html` to `spa.tpl`.
    - API smoke: `/api/health`, login, and the changed module endpoint.
 
+## Cross-Machine Git Handoff
+
+Use GitHub as the source of truth when work will continue on another computer.
+
+1. Before editing, run `git status` and pull the tracked branch if the worktree is clean.
+2. Before a handoff, stage only source, documentation, skill, and configuration files that belong to the task; exclude generated builds, logs, archives, `node_modules`, uploads, and secrets.
+3. Review the staged diff, commit it with a clear message, then push only when the user has authorized GitHub changes.
+4. On the other computer, fetch, switch to the same remote branch, and pull before making edits.
+5. Never overwrite, reset, or discard uncommitted changes to resolve a sync issue. Report conflicts and preserve both versions for review.
+
+See `references/operations.md` for the exact Windows commands and the current collaboration branch.
+
 ## Common Pitfalls
 
 - White screen usually means frontend runtime exception. Check browser console and API response shape first.

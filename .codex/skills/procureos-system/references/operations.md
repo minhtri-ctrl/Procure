@@ -107,6 +107,39 @@ Health check:
 http://localhost:8080/api/health
 ```
 
+## Cross-machine development
+
+GitHub is the shared source of truth. The current collaboration branch is `release/2907-so-sanh-bg`.
+
+Before starting work on either computer, inspect and synchronize safely:
+
+```powershell
+git status
+git pull origin release/2907-so-sanh-bg
+```
+
+Only pull into a clean worktree. If the worktree has changes, commit and push the intended source/skill/documentation files first. Do not stage generated artifacts such as `server/webui/`, `admin/spa.html`, `outputs/`, deployment ZIPs, logs, `node_modules`, `.env`, or `secrets/`.
+
+To hand work to the other computer after the user authorizes a GitHub update:
+
+```powershell
+git add <reviewed-files>
+git diff --cached --stat
+git commit -m "<clear change summary>"
+git push origin refs/heads/release/2907-so-sanh-bg:refs/heads/release/2907-so-sanh-bg
+```
+
+On a new Windows computer:
+
+```powershell
+git clone https://github.com/minhtri-ctrl/Procure.git procureos-web
+cd procureos-web
+git fetch origin
+git switch -c release/2907-so-sanh-bg refs/remotes/origin/release/2907-so-sanh-bg
+```
+
+The full ProcureOS prompt and workspace skill are versioned in `.agents/procureos-chatgpt-master-prompt.md` and `.codex/skills/procureos-system/`. In a new Codex chat, ask it to read both files before working. If Git reports a conflict, do not use reset/checkout to discard changes; resolve the conflict deliberately or ask for direction.
+
 ## Demo Server Helper
 
 `run-demo.cmd` starts the local demo server:

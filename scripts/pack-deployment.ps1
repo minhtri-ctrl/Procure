@@ -24,7 +24,7 @@ if ($demoSetting -and -not $AllowDemoMode) {
 }
 
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("procureos-deployment-" + [Guid]::NewGuid().ToString('N'))
-$excludedNames = @('.git', 'node_modules', '.agents', '.codex', 'procureos-deployment.zip')
+$excludedNames = @('.git', 'node_modules', '.agents', '.codex', 'outputs', 'procureos-deployment.zip')
 
 try {
   New-Item -ItemType Directory -Path $stage | Out-Null
